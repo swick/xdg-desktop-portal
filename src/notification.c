@@ -129,7 +129,7 @@ call_data_new (GDBusMethodInvocation *inv,
   CallData *call_data = g_object_new (call_data_get_type(),  NULL);
 
   call_data->inv = g_object_ref (inv);
-  call_data->app_info = xdp_app_info_ref (app_info);
+  call_data->app_info = g_object_ref (app_info);
   call_data->sender = g_strdup (sender);
   call_data->id = g_strdup (id);
   if (notification)
@@ -144,7 +144,7 @@ call_data_finalize (GObject *object)
   CallData *call_data = CALL_DATA (object);
 
   g_object_unref (call_data->inv);
-  xdp_app_info_unref (call_data->app_info);
+  g_object_unref (call_data->app_info);
   g_free (call_data->id);
   g_free (call_data->sender);
   if (call_data->notification)
