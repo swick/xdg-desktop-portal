@@ -173,7 +173,7 @@ endif
 
 xdp_validate_icon = executable(
   'xdg-desktop-portal-validate-icon',
-  'validate-icon.c',
+  'helpers/validate-icon.c',
   dependencies: [gdk_pixbuf_dep, gio_unix_dep],
   c_args: validate_icon_c_args,
   install: true,
@@ -195,7 +195,7 @@ xdp_validate_sound = executable(
 )
 
 configure_file(
-  input: 'xdg-desktop-portal-rewrite-launchers.service.in',
+  input: 'helpers/xdg-desktop-portal-rewrite-launchers.service.in',
   output: '@BASENAME@',
   configuration: base_config,
   install: true,
@@ -204,7 +204,7 @@ configure_file(
 
 executable(
   'xdg-desktop-portal-rewrite-launchers',
-  'rewrite-launchers.c',
+  'helpers/rewrite-launchers.c',
   'glib-backports.c',
   dependencies: common_deps,
   include_directories: common_includes,
