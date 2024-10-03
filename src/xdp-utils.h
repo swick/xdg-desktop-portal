@@ -159,6 +159,9 @@ gboolean xdp_pidfd_get_namespace (int      pidfd,
                                   ino_t   *ns,
                                   GError **error);
 
+gboolean xdp_pidfd_verify_pid (int   pidfd,
+                               pid_t pid);
+
 gboolean xdp_map_pids_full (DIR     *proc,
                             ino_t    pidns,
                             pid_t   *pids,
@@ -176,6 +179,16 @@ gboolean xdp_map_tids (ino_t    pidns,
                        pid_t   *tids,
                        guint    n_tids,
                        GError **error);
+
+gboolean xdp_opendirat (int          dfd,
+                        const char  *path,
+                        gboolean     follow,
+                        int         *out_fd,
+                        GError     **error);
+
+GBytes * xdp_fgetxattr_bytes (int          fd,
+                              const char  *attribute,
+                              GError     **error);
 
 #define XDP_EXPORT_TEST XDP_EXPORT
 #define XDP_EXPORT __attribute__((visibility("default"))) extern

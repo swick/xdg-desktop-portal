@@ -43,6 +43,7 @@
 #include "xdp-app-info-snap-private.h"
 #include "xdp-app-info-host-private.h"
 #include "xdp-app-info-test-private.h"
+#include "xdp-app-info-containers1-private.h"
 
 #define DBUS_NAME_DBUS "org.freedesktop.DBus"
 #define DBUS_INTERFACE_DBUS DBUS_NAME_DBUS
@@ -726,7 +727,18 @@ xdp_connection_lookup_app_info_sync (GDBusConnection  *connection,
   if (!xdp_connection_get_pidfd (connection, sender, cancellable, &pidfd, &pid, error))
     return NULL;
 
-  app_info = xdp_app_info_flatpak_new (pid, pidfd, &local_error);
+  app_info = xdp_app_info_containers1_new (pid, pidfd, &local_error);
+
+  if (!app_info && !g_error_matches (local_error, XDP_APP_INFO_ERROR,
+                                     XDP_APP_INFO_ERROR_WRONG_APP_KIND))
+    {
+      g_propagate_error (error, g_steal_pointer (&local_error));
+      return NULL;
+    }
+  g_clear_error (&local_error);
+
+  if (app_info == NULL)
+    app_info = xdp_app_info_flatpak_new (pid, pidfd, &local_error);
 
   if (!app_info && !g_error_matches (local_error, XDP_APP_INFO_ERROR,
                                      XDP_APP_INFO_ERROR_WRONG_APP_KIND))

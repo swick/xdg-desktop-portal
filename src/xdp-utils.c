@@ -29,6 +29,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/xattr.h>
 
 #include <gio/gio.h>
 #include <gio/gunixoutputstream.h>
@@ -869,6 +870,19 @@ xdp_pidfd_get_namespace (int      pidfd,
   return TRUE;
 }
 
+gboolean
+xdp_pidfd_verify_pid (int   pidfd,
+                      pid_t pid)
+{
+  pid_t current_pid;
+
+  current_pid = xdp_pidfd_to_pid (pidfd, NULL);
+  if (current_pid < 0)
+    return FALSE;
+
+  return current_pid == pid;
+}
+
 static int
 parse_status_field_uid (const char *val,
                         uid_t      *uid)
@@ -1133,4 +1147,75 @@ xdp_map_tids (ino_t    pidns,
   proc_dir = g_strdup_printf ("/proc/%u/task", (guint) owner_pid);
 
   return map_pids_proc (pidns, tids, n_tids, proc_dir, error);
+}
+
+gboolean
+xdp_opendirat (int          dfd,
+               const char  *path,
+               gboolean     follow,
+               int         *out_fd,
+               GError     **error)
+{
+  int flags = O_RDONLY | O_NONBLOCK | O_DIRECTORY | O_CLOEXEC | O_NOCTTY;
+  int res;
+
+  if (!follow)
+    flags |= O_NOFOLLOW;
+
+  res = openat (dfd, path, flags);
+
+  if (res == -1)
+    {
+      int saved_errno = errno;
+
+      g_set_error (error, G_IO_ERROR, g_io_error_from_errno (saved_errno),
+                   "opendir(%s)", path);
+      return FALSE;
+    }
+
+  *out_fd = res;
+  return TRUE;
+}
+
+/* fixes builds against musl, taken from glibc unistd.h */
+#ifndef TEMP_FAILURE_RETRY
+#define TEMP_FAILURE_RETRY(expression) \
+  (__extension__                                                              \
+    ({ long int __result;                                                     \
+       do __result = (long int) (expression);                                 \
+       while (__result == -1L && errno == EINTR);                             \
+       __result; }))
+#endif
+
+GBytes *
+xdp_fgetxattr_bytes (int          fd,
+                     const char  *attribute,
+                     GError     **error)
+{
+  g_autofree uint8_t *buf = NULL;
+  ssize_t bytes_read, real_size;
+
+  if (TEMP_FAILURE_RETRY (bytes_read = fgetxattr (fd,
+                                                  attribute,
+                                                  NULL,
+                                                  0)) < 0)
+    {
+      g_set_error (error, G_IO_ERROR, g_io_error_from_errno (errno),
+                   "fgetxattr(%s)", attribute);
+      return FALSE;
+    }
+
+  buf = g_malloc (bytes_read);
+
+  if (TEMP_FAILURE_RETRY (real_size = fgetxattr (fd,
+                                                 attribute,
+                                                 buf,
+                                                 bytes_read)) < 0)
+    {
+      g_set_error (error, G_IO_ERROR, g_io_error_from_errno (errno),
+                   "fgetxattr(%s)", attribute);
+      return FALSE;
+    }
+
+  return g_bytes_new_take (g_steal_pointer (&buf), real_size);
 }
