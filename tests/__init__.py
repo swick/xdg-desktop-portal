@@ -332,14 +332,15 @@ class PortalMock:
     Parent class for portal tests.
     """
 
-    def __init__(self, session_bus, portal_name: str, app_id: str = "org.example.App"):
-        self.bus = session_bus
+    def __init__(self, dbus_test_case, portal_name: str, app_id: str = "org.example.App"):
+        self.bus = dbus_test_case
         self.portal_name = portal_name
         self.p_mock = None
         self.xdp = None
         self.portal_interfaces: Dict[str, dbus.Interface] = {}
         self.dbus_monitor = None
         self.app_id = app_id
+        self.services = {}
 
     @property
     def interface_name(self) -> str:
@@ -348,6 +349,10 @@ class PortalMock:
     @property
     def dbus_con(self):
         return self.bus.dbus_con
+
+    @property
+    def dbus_con_sys(self):
+        return self.bus.dbus_con_sys
 
     def start_impl_portal(self, params=None, portal=None):
         """
@@ -376,6 +381,15 @@ class PortalMock:
             f"tests/templates/{portal.lower()}.py",
             dbus.Dictionary(params, signature="sv"),
             dbus_interface=dbusmock.MOCK_IFACE,
+        )
+
+    def start_service(self, name, params):
+        """
+        Start an external service
+        """
+        self.services[name] = self.bus.spawn_server_template(
+            template=f"tests/templates/{name}.py",
+            parameters=params,
         )
 
     def start_xdp(self):
@@ -443,6 +457,11 @@ class PortalMock:
         if self.xdp:
             self.xdp.terminate()
             self.xdp.wait()
+
+        for name, service in self.services.items():
+            p_mock, _ = service
+            self.p_mock.terminate()
+            self.p_mock.wait()
 
         if self.p_mock:
             if self.p_mock.stdout:

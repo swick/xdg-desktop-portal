@@ -11,16 +11,20 @@ from tests import PortalMock
 
 
 @pytest.fixture()
-def session_bus() -> Iterator[dbusmock.DBusTestCase]:
+def dbus_test_case() -> Iterator[dbusmock.DBusTestCase]:
     """
     Fixture to yield a DBusTestCase with a started session bus.
     """
     bus = dbusmock.DBusTestCase()
     bus.setUp()
     bus.start_session_bus()
+    bus.start_system_bus()
     con = bus.get_dbus(system_bus=False)
+    con_sys = bus.get_dbus(system_bus=True)
     assert con
+    assert con_sys
     setattr(bus, "dbus_con", con)
+    setattr(bus, "dbus_con_sys", con_sys)
     yield bus
     bus.tearDown()
     bus.tearDownClass()
@@ -64,12 +68,22 @@ def app_id():
 
 
 @pytest.fixture
-def portal_mock(session_bus, portal_name, params, portal_has_impl, app_id) -> PortalMock:
+def mocked_services():
+    """
+    Default fixture providing the the services which should be mocked
+    """
+    return {}
+
+
+@pytest.fixture
+def portal_mock(dbus_test_case, portal_name, params, portal_has_impl, app_id, mocked_services) -> PortalMock:
     """
     Fixture yielding a PortalMock object with the impl started, if applicable.
     """
-    pmock = PortalMock(session_bus, portal_name, app_id)
+    pmock = PortalMock(dbus_test_case, portal_name, app_id)
     if portal_has_impl:
         pmock.start_impl_portal(params)
+    for name, params in mocked_services.items():
+        pmock.start_service(name, params)
     pmock.start_xdp()
     return pmock
