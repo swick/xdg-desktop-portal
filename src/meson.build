@@ -24,6 +24,14 @@ background_monitor_built_sources = gnome.gdbus_codegen(
   docbook: 'portal',
   autocleanup: 'all',
 )
+portal_helper_built_sources = gnome.gdbus_codegen(
+  'xdp-helper-dbus',
+  sources: portal_helper_sources,
+  interface_prefix: 'org.freedesktop',
+  namespace: 'XdpDbusHelper',
+  docbook: 'portal',
+  autocleanup: 'all',
+)
 if have_geoclue
   geoclue_built_sources = gnome.gdbus_codegen(
     'geoclue-dbus',
@@ -64,6 +72,7 @@ xdp_utils_sources = files(
   'xdp-app-info-test.c',
   'xdp-app-info-containers1.c',
 )
+xdp_utils_sources += portal_helper_built_sources
 
 if have_libsystemd
   xdp_utils_sources += sd_escape_sources

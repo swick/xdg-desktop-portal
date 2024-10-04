@@ -22,8 +22,9 @@
 #ifdef HAVE_LIBSYSTEMD
 #include <systemd/sd-login.h>
 #endif
-
 #include <fcntl.h>
+
+#include "xdp-helper-dbus.h"
 
 #include "xdp-app-info-containers1-private.h"
 
@@ -31,17 +32,26 @@
 #define CONTAINERS1_XATTR_ENGINE    CONTAINERS1_XATTR ".engine"
 #define CONTAINERS1_XATTR_APP       CONTAINERS1_XATTR ".appid"
 #define CONTAINERS1_XATTR_INSTANCE  CONTAINERS1_XATTR ".instanceid"
+#define CONTAINERS1_XATTR_PORTAL    CONTAINERS1_XATTR ".portalbus"
+
+#define PORTAL_HELPER_OBJECT_PATH "/org/freedesktop/PortalHelper"
 
 #define FLATPAK_ENGINE_ID "org.flatpak"
 
 struct _XdpAppInfoContainers1
 {
   XdpAppInfo parent;
+
+  XdpDbusHelperPortalHelper *helper_proxy;
 };
 
 G_DEFINE_FINAL_TYPE (XdpAppInfoContainers1,
                      xdp_app_info_containers1,
                      XDP_TYPE_APP_INFO)
+
+static GDBusConnection *session_bus;
+/* bus name -> XdpDbusHelperPortalHelper */
+GHashTable *helper_proxies;
 
 static char *
 xdp_app_info_containers1_remap_path (XdpAppInfo *app_info,
@@ -109,6 +119,7 @@ get_containers1_metadata (int      pid,
                           char   **engine_out,
                           char   **app_id_out,
                           char   **instance_id_out,
+                          char   **portal_bus_out,
                           GError **error)
 {
 #ifdef HAVE_LIBSYSTEMD
@@ -120,6 +131,7 @@ get_containers1_metadata (int      pid,
   g_autofree char *engine = NULL;
   g_autofree char *app_id = NULL;
   g_autofree char *instance_id = NULL;
+  g_autofree char *portal_bus = NULL;
 
   path = g_strdup_printf ("/run/user/%d/systemd/private", getuid ());
 
@@ -169,6 +181,12 @@ get_containers1_metadata (int      pid,
   g_return_val_if_fail (app_id != NULL, FALSE);
   g_return_val_if_fail (instance_id != NULL, FALSE);
 
+  if (!get_file_xattrs (fd, CONTAINERS1_XATTR_PORTAL, &portal_bus, &local_error))
+    {
+      g_debug ("No PortalHelper bus name: %s", local_error->message);
+      g_clear_error (&local_error);
+    }
+
   if (!xdp_pidfd_verify_pid (pidfd, pid))
     {
       g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
@@ -179,11 +197,53 @@ get_containers1_metadata (int      pid,
   *engine_out = g_steal_pointer (&engine);
   *app_id_out = g_steal_pointer (&app_id);
   *instance_id_out = g_steal_pointer (&instance_id);
+  *portal_bus_out = g_steal_pointer (&portal_bus);
   return TRUE;
 #else
   return flatpak_fail_error (error, FLATPAK_ERROR_SETUP_FAILED,
                              _("Cannot set cgroup xattrs: No systemd support built-in"));
 #endif
+}
+
+static XdpDbusHelperPortalHelper *
+get_helper_proxy (const char  *portal_bus,
+                  GError     **error)
+{
+  g_autoptr (XdpDbusHelperPortalHelper) helper_proxy = NULL;
+  XdpDbusHelperPortalHelper *cached_helper_proxy = NULL;
+
+  if (!session_bus)
+    session_bus = g_bus_get_sync (G_BUS_TYPE_SESSION, NULL, error);
+
+  if (!session_bus)
+    return NULL;
+
+  if (!helper_proxies)
+    {
+      helper_proxies = g_hash_table_new_full (g_str_hash, g_str_equal,
+                                              (GDestroyNotify) g_free,
+                                              (GDestroyNotify) g_object_unref);
+    }
+
+  cached_helper_proxy = g_hash_table_lookup (helper_proxies, portal_bus);
+  if (cached_helper_proxy)
+    return g_object_ref (cached_helper_proxy);
+
+  helper_proxy =
+    xdp_dbus_helper_portal_helper_proxy_new_sync (session_bus,
+                                                  G_DBUS_PROXY_FLAGS_NONE,
+                                                  portal_bus,
+                                                  PORTAL_HELPER_OBJECT_PATH,
+                                                  NULL,
+                                                  error);
+  if (!helper_proxy)
+    return NULL;
+
+  g_hash_table_insert (helper_proxies,
+                       g_strdup (portal_bus),
+                       g_object_ref (helper_proxy));
+
+  return g_steal_pointer (&helper_proxy);
 }
 
 XdpAppInfo *
@@ -195,6 +255,9 @@ xdp_app_info_containers1_new (int      pid,
   g_autofree char *engine = NULL;
   g_autofree char *app_id = NULL;
   g_autofree char *instance_id = NULL;
+  g_autofree char *portal_bus = NULL;
+  g_autoptr(GAppInfo) gappinfo = NULL;
+  g_autoptr (XdpDbusHelperPortalHelper) helper_proxy = NULL;
 
   if (pidfd < 0)
     {
@@ -203,14 +266,44 @@ xdp_app_info_containers1_new (int      pid,
       return FALSE;
     }
 
-  if (!get_containers1_metadata (pid, pidfd, &engine, &app_id, &instance_id, error))
+  if (!get_containers1_metadata (pid, pidfd,
+                                 &engine, &app_id, &instance_id, &portal_bus,
+                                 error))
     return FALSE;
 
+  if (portal_bus)
+    {
+      g_autoptr (GError) local_error = NULL;
+      g_autoptr (GVariant) info = NULL;
+
+      helper_proxy = get_helper_proxy (portal_bus, &local_error);
+
+      if (xdp_dbus_helper_portal_helper_call_get_info_sync (helper_proxy,
+                                                            app_id,
+                                                            instance_id,
+                                                            &info,
+                                                            NULL,
+                                                            &local_error))
+        {
+          const char *desktop_file = NULL;
+
+          g_variant_lookup (info, "DesktopFile", "&s", &desktop_file);
+
+          gappinfo = G_APP_INFO (g_desktop_app_info_new (desktop_file));
+        }
+      else
+        {
+          g_clear_object (&helper_proxy);
+          g_warning ("Could not get app information: %s", local_error->message);
+        }
+    }
+
   app_info_containers1 = g_object_new (XDP_TYPE_APP_INFO_CONTAINERS1, NULL);
+  app_info_containers1->helper_proxy = g_steal_pointer (&helper_proxy);
   xdp_app_info_initialize (XDP_APP_INFO (app_info_containers1),
                            engine, app_id, instance_id,
-                           pidfd,
-                           NULL,
+                           pidfd /* FIXME this can be wrong with xdg-dbus-proxy */,
+                           gappinfo,
                            FALSE, TRUE, TRUE);
 
   return XDP_APP_INFO (g_steal_pointer (&app_info_containers1));
