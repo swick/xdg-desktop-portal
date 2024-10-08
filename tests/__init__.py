@@ -351,7 +351,7 @@ class PortalMock:
 
     def start_impl_portal(self, params=None, portal=None):
         """
-        Start the impl.portal for the given portal name. If missing,
+        Start the impl.portal for the given portal name. If missinga,
         the portal name is derived from the class name of the test, e.g.
         ``TestFoo`` will start ``org.freedesktop.impl.portal.Foo``.
         """
