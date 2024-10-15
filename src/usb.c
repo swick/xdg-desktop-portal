@@ -255,7 +255,9 @@ usb_sender_info_new (const char *sender_name,
 }
 
 static UsbSenderInfo *
-_usb_sender_info_from_sender (XdpUsb *self, const char *sender, XdpAppInfo *app_info)
+_usb_sender_info_from_sender (XdpUsb     *self,
+                              const char *sender,
+                              XdpAppInfo *app_info)
 {
   g_autoptr(UsbSenderInfo) sender_info = NULL;
 
@@ -275,8 +277,8 @@ _usb_sender_info_from_sender (XdpUsb *self, const char *sender, XdpAppInfo *app_
 }
 
 static UsbSenderInfo *
-usb_sender_info_from_call (XdpUsb  *self,
-                           Call *call)
+usb_sender_info_from_call (XdpUsb *self,
+                           Call   *call)
 {
   g_assert (call != NULL);
 
@@ -618,8 +620,12 @@ register_with_unique_usb_id (XdpUsb       *self,
 /* Callbacks */
 
 static void
-handle_session_event (XdpUsb *self, XdpUsbSession *usb_session, GUdevDevice *device,
-                      const char *id, const char *action, gboolean removing)
+handle_session_event (XdpUsb        *self,
+                      XdpUsbSession *usb_session,
+                      GUdevDevice   *device,
+                      const char    *id,
+                      const char    *action,
+                      gboolean       removing)
 {
   g_autoptr(GVariant) device_variant = NULL;
   GVariantBuilder devices_builder;
@@ -731,7 +737,9 @@ static XdpOptionKey usb_create_session_options[] = {
 };
 
 static void
-send_initial_device_list (XdpUsb *self, XdpUsbSession *usb_session, Call *call)
+send_initial_device_list (XdpUsb        *self,
+                          XdpUsbSession *usb_session,
+                          Call          *call)
 {
   /* Send initial list of devices the app has permission to see */
   g_autoptr(UsbSenderInfo) sender_info = NULL;
@@ -855,7 +863,8 @@ static XdpOptionKey usb_enumerate_devices_options[] = {
 };
 
 static GVariant *
-list_permitted_devices (XdpUsb *self, Call *call)
+list_permitted_devices (XdpUsb *self,
+                        Call   *call)
 {
   g_autoptr(UsbSenderInfo) sender_info = NULL;
   GVariantBuilder builder;
@@ -1538,7 +1547,7 @@ static void
 peer_died_cb (const char *sender)
 {
   if (usb && g_hash_table_remove (usb->sender_infos, sender))
-    g_debug ("Revoked acquired USB devices from sender %s", sender);
+    g_debug ("Removed sender %s", sender);
 }
 
 GDBusInterfaceSkeleton *
