@@ -629,7 +629,7 @@ handle_session_event (XdpUsb *self, XdpUsbSession *usb_session, GUdevDevice *dev
   g_assert (G_UDEV_IS_DEVICE (device));
   g_assert (g_strcmp0 (g_udev_device_get_subsystem (device), "usb") == 0);
 
-  session = (Session *)usb_session;
+  session = SESSION (usb_session);
   sender_info = g_hash_table_lookup (self->sender_infos, session->sender);
   g_assert (sender_info != NULL);
 
@@ -735,7 +735,7 @@ send_initial_device_list (XdpUsb *self, XdpUsbSession *usb_session, Call *call)
 {
   /* Send initial list of devices the app has permission to see */
   g_autoptr(UsbSenderInfo) sender_info = NULL;
-  Session *session = (Session *) usb_session;
+  Session *session = SESSION (usb_session);
   GVariantBuilder devices_builder;
   GHashTableIter iter;
   GUdevDevice *device;
@@ -829,7 +829,7 @@ handle_create_session (XdpDbusUsb            *object,
       return G_DBUS_METHOD_INVOCATION_HANDLED;
     }
 
-  session = (Session *) usb_session;
+  session = SESSION (usb_session);
   if (!session_export (session, &error))
     {
       g_dbus_method_invocation_return_gerror (invocation, error);
