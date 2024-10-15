@@ -188,7 +188,7 @@ is_gudev_device_suitable (GUdevDevice *device)
     return FALSE;
 
   /* We check access to the device */
-  if (access(device_file, R_OK) == -1)
+  if (access (device_file, R_OK) == -1)
     return FALSE;
 
   return TRUE;
@@ -304,7 +304,7 @@ static UsbSenderInfo *
 usb_sender_info_from_call (XdpUsb *self,
                            Call   *call)
 {
-  g_assert (call != NULL);
+  g_return_val_if_fail (call != NULL, NULL);
 
   return _usb_sender_info_from_sender (self, call->sender, call->app_info);
 }
@@ -313,7 +313,7 @@ static UsbSenderInfo *
 usb_sender_info_from_request (XdpUsb  *self,
                               Request *request)
 {
-  g_assert (request != NULL);
+  g_return_val_if_fail (request != NULL, NULL);
 
   return _usb_sender_info_from_sender (self, request->sender, request->app_info);
 }
