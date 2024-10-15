@@ -279,9 +279,9 @@ usb_sender_info_new (const char *sender_name,
 }
 
 static UsbSenderInfo *
-_usb_sender_info_from_sender (XdpUsb     *self,
-                              const char *sender,
-                              XdpAppInfo *app_info)
+usb_sender_info_from_sender (XdpUsb     *self,
+                             const char *sender,
+                             XdpAppInfo *app_info)
 {
   g_autoptr(UsbSenderInfo) sender_info = NULL;
 
@@ -306,7 +306,7 @@ usb_sender_info_from_call (XdpUsb *self,
 {
   g_return_val_if_fail (call != NULL, NULL);
 
-  return _usb_sender_info_from_sender (self, call->sender, call->app_info);
+  return usb_sender_info_from_sender (self, call->sender, call->app_info);
 }
 
 static UsbSenderInfo *
@@ -315,7 +315,7 @@ usb_sender_info_from_request (XdpUsb  *self,
 {
   g_return_val_if_fail (request != NULL, NULL);
 
-  return _usb_sender_info_from_sender (self, request->sender, request->app_info);
+  return usb_sender_info_from_sender (self, request->sender, request->app_info);
 }
 
 static void
