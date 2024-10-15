@@ -174,8 +174,7 @@ xdp_usb_rule_from_string (const char *string)
 void
 xdp_usb_query_free (XdpUsbQuery *query)
 {
-  if (!query)
-    return;
+  g_return_if_fail (query != NULL);
 
   g_clear_pointer (&query->rules, g_ptr_array_unref);
   g_free (query);

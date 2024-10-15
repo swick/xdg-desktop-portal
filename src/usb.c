@@ -186,11 +186,9 @@ unique_permission_id_for_device (GUdevDevice *device)
 }
 
 static void
-usb_device_acquire_data_free (gpointer data)
+usb_device_acquire_data_free (UsbDeviceAcquireData *access_data)
 {
-  UsbDeviceAcquireData *access_data = (UsbDeviceAcquireData *) data;
-
-  g_return_if_fail (access_data);
+  g_return_if_fail (access_data != NULL);
 
   g_clear_pointer (&access_data->device_id, g_free);
   g_clear_pointer (&access_data, g_free);
@@ -201,7 +199,7 @@ G_DEFINE_AUTOPTR_CLEANUP_FUNC (UsbDeviceAcquireData, usb_device_acquire_data_fre
 static UsbOwnedDevice *
 usb_owned_device_ref (UsbOwnedDevice *owned_device)
 {
-  g_assert (owned_device);
+  g_return_val_if_fail (owned_device != NULL, NULL);
 
   g_atomic_ref_count_inc (&owned_device->ref_count);
 
@@ -209,12 +207,9 @@ usb_owned_device_ref (UsbOwnedDevice *owned_device)
 }
 
 static void
-usb_owned_device_unref (gpointer data)
+usb_owned_device_unref (UsbOwnedDevice *owned_device)
 {
-  UsbOwnedDevice *owned_device = (UsbOwnedDevice *) data;
-
-  if (!owned_device)
-    return;
+  g_return_if_fail (owned_device != NULL);
 
   if (g_atomic_ref_count_dec (&owned_device->ref_count))
     {
@@ -227,10 +222,8 @@ usb_owned_device_unref (gpointer data)
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (UsbOwnedDevice, usb_owned_device_unref)
 
 static void
-usb_sender_info_unref (gpointer data)
+usb_sender_info_unref (UsbSenderInfo *sender_info)
 {
-  UsbSenderInfo *sender_info = (UsbSenderInfo *) data;
-
   if (g_atomic_ref_count_dec (&sender_info->ref_count))
     {
       g_clear_object (&sender_info->app_info);
@@ -254,7 +247,9 @@ usb_sender_info_new (const char *sender_name,
   sender_info->sender_name = g_strdup (sender_name);
   sender_info->app_info = g_object_ref (app_info);
   sender_info->sender_state = USB_SENDER_STATE_DEFAULT;
-  sender_info->owned_devices = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, usb_owned_device_unref);
+  sender_info->owned_devices =
+    g_hash_table_new_full (g_str_hash, g_str_equal,
+                           g_free, (GDestroyNotify) usb_owned_device_unref);
 
   return g_steal_pointer (&sender_info);
 }
@@ -289,7 +284,7 @@ usb_sender_info_from_call (XdpUsb  *self,
 }
 
 static UsbSenderInfo *
-usb_sender_info_from_request (XdpUsb     *self,
+usb_sender_info_from_request (XdpUsb  *self,
                               Request *request)
 {
   g_assert (request != NULL);
@@ -401,11 +396,7 @@ usb_sender_info_match_device (UsbSenderInfo *sender_info,
       XdpUsbQuery *query = g_ptr_array_index (queries, i);
       gboolean query_matches = TRUE;
 
-      if (!query)
-        {
-          g_debug ("query %ld is null", i);
-          continue;
-        }
+      g_return_val_if_fail (query != NULL, FALSE);
 
       for (size_t j = 0; j < query->rules->len; j++)
         {
@@ -986,8 +977,9 @@ usb_acquire_devices_cb (GObject      *source_object,
   if (response == XDG_DESKTOP_PORTAL_RESPONSE_SUCCESS)
     {
       g_clear_pointer (&sender_info->acquiring_devices, g_ptr_array_unref);
-      sender_info->acquiring_devices = g_ptr_array_new_full (g_variant_iter_n_children (devices_iter),
-                                                             usb_device_acquire_data_free);
+      sender_info->acquiring_devices =
+        g_ptr_array_new_full (g_variant_iter_n_children (devices_iter),
+                              (GDestroyNotify) usb_device_acquire_data_free);
       while (g_variant_iter_next (devices_iter, "(&s@a{sv})", &device_id, &options))
         {
           g_autoptr(UsbDeviceAcquireData) access_data = NULL;
@@ -1513,10 +1505,14 @@ xdp_usb_init (XdpUsb *self)
 
   xdp_dbus_usb_set_version (XDP_DBUS_USB (self), 1);
 
-  self->ids_to_devices = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_object_unref);
-  self->syspaths_to_ids = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
+  self->ids_to_devices = g_hash_table_new_full (g_str_hash, g_str_equal,
+                                                g_free, g_object_unref);
+  self->syspaths_to_ids = g_hash_table_new_full (g_str_hash, g_str_equal,
+                                                 g_free, g_free);
   self->sessions = g_hash_table_new (g_direct_hash, g_direct_equal);
-  self->sender_infos = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, usb_sender_info_unref);
+  self->sender_infos =
+    g_hash_table_new_full (g_str_hash, g_str_equal,
+                           g_free, (GDestroyNotify) usb_sender_info_unref);
 
   self->gudev_client = g_udev_client_new (subsystems);
   g_signal_connect (self->gudev_client,
