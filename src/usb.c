@@ -52,6 +52,7 @@
 
 #define PERMISSION_TABLE "usb"
 #define PERMISSION_ID "usb"
+#define MAX_DEVICES 8
 
 /* TODO:
  *
@@ -60,6 +61,52 @@
  *  - Check if backend is not increasing permissions
  *  - Save allowed devices in the permission store
  */
+
+struct _XdpUsb
+{
+  XdpDbusUsbSkeleton parent_instance;
+
+  GHashTable *ids_to_devices;
+  GHashTable *syspaths_to_ids;
+
+  GHashTable *sessions;
+  GHashTable *sender_infos;
+
+  GUdevClient *gudev_client;
+};
+
+struct _XdpUsbClass
+{
+  XdpDbusUsbSkeletonClass parent_class;
+};
+
+#define XDP_TYPE_USB (xdp_usb_get_type ())
+G_DECLARE_FINAL_TYPE (XdpUsb, xdp_usb, XDP, USB, XdpDbusUsbSkeleton)
+
+static void xdp_usb_iface_init (XdpDbusUsbIface *iface);
+
+G_DEFINE_FINAL_TYPE_WITH_CODE (XdpUsb, xdp_usb, XDP_DBUS_TYPE_USB_SKELETON,
+                               G_IMPLEMENT_INTERFACE (XDP_DBUS_TYPE_USB, xdp_usb_iface_init));
+
+struct _XdpUsbSessionClass
+{
+  SessionClass parent_class;
+};
+
+#define XDP_TYPE_USB_SESSION (xdp_usb_session_get_type ())
+G_DECLARE_FINAL_TYPE (XdpUsbSession,
+                      xdp_usb_session,
+                      XDP, USB_SESSION,
+                      Session)
+
+struct _XdpUsbSession
+{
+  Session parent;
+
+  GHashTable *available_devices;
+};
+
+G_DEFINE_TYPE (XdpUsbSession, xdp_usb_session, XDP_TYPE_USB_SESSION)
 
 typedef struct
 {
@@ -95,32 +142,6 @@ typedef struct _UsbSenderInfo
   GHashTable *owned_devices; /* device id → UsbOwnedDevices */
 } UsbSenderInfo;
 
-struct _XdpUsb
-{
-  XdpDbusUsbSkeleton parent_instance;
-
-  GHashTable *ids_to_devices;
-  GHashTable *syspaths_to_ids;
-
-  GHashTable *sessions;
-  GHashTable *sender_infos;
-
-  GUdevClient *gudev_client;
-};
-
-struct _XdpUsbClass
-{
-  XdpDbusUsbSkeletonClass parent_class;
-};
-
-#define XDP_TYPE_USB (xdp_usb_get_type ())
-G_DECLARE_FINAL_TYPE (XdpUsb, xdp_usb, XDP, USB, XdpDbusUsbSkeleton)
-
-static void xdp_usb_iface_init (XdpDbusUsbIface *iface);
-
-G_DEFINE_FINAL_TYPE_WITH_CODE (XdpUsb, xdp_usb, XDP_DBUS_TYPE_USB_SKELETON,
-                               G_IMPLEMENT_INTERFACE (XDP_DBUS_TYPE_USB, xdp_usb_iface_init));
-
 static XdpDbusImplUsb *usb_impl;
 static XdpUsb *usb;
 
@@ -138,6 +159,15 @@ static const char * const allowed_udev_properties[] = {
   "ID_VENDOR_FROM_DATABASE",
   NULL,
 };
+
+static void usb_device_acquire_data_free (UsbDeviceAcquireData *access_data);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (UsbDeviceAcquireData, usb_device_acquire_data_free)
+
+static void usb_owned_device_unref (UsbOwnedDevice *owned_device);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (UsbOwnedDevice, usb_owned_device_unref)
+
+static void usb_sender_info_unref (UsbSenderInfo *sender_info);
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (UsbSenderInfo, usb_sender_info_unref)
 
 static gboolean
 is_gudev_device_suitable (GUdevDevice *device)
@@ -194,8 +224,6 @@ usb_device_acquire_data_free (UsbDeviceAcquireData *access_data)
   g_clear_pointer (&access_data, g_free);
 }
 
-G_DEFINE_AUTOPTR_CLEANUP_FUNC (UsbDeviceAcquireData, usb_device_acquire_data_free)
-
 static UsbOwnedDevice *
 usb_owned_device_ref (UsbOwnedDevice *owned_device)
 {
@@ -219,8 +247,6 @@ usb_owned_device_unref (UsbOwnedDevice *owned_device)
     }
 }
 
-G_DEFINE_AUTOPTR_CLEANUP_FUNC (UsbOwnedDevice, usb_owned_device_unref)
-
 static void
 usb_sender_info_unref (UsbSenderInfo *sender_info)
 {
@@ -233,8 +259,6 @@ usb_sender_info_unref (UsbSenderInfo *sender_info)
       g_clear_pointer (&sender_info, g_free);
     }
 }
-
-G_DEFINE_AUTOPTR_CLEANUP_FUNC (UsbSenderInfo, usb_sender_info_unref)
 
 static UsbSenderInfo *
 usb_sender_info_new (const char *sender_name,
@@ -452,28 +476,6 @@ usb_sender_info_match_device (UsbSenderInfo *sender_info,
   return match;
 }
 
-/* XdpUsbSession */
-
-struct _XdpUsbSessionClass
-{
-  SessionClass parent_class;
-};
-
-#define XDP_TYPE_USB_SESSION (xdp_usb_session_get_type ())
-G_DECLARE_FINAL_TYPE (XdpUsbSession,
-                      xdp_usb_session,
-                      XDP, USB_SESSION,
-                      Session)
-
-struct _XdpUsbSession
-{
-  Session parent;
-
-  GHashTable *available_devices;
-};
-
-G_DEFINE_TYPE (XdpUsbSession, xdp_usb_session, XDP_TYPE_USB_SESSION)
-
 static void
 xdp_usb_session_close (Session *session)
 {
@@ -589,7 +591,6 @@ gudev_device_to_variant (XdpUsb        *self,
   return g_variant_dict_end (&device_variant_dict);
 }
 
-/* Register the device and create a unique ID for it */
 static char *
 register_with_unique_usb_id (XdpUsb       *self,
                              GUdevDevice  *device)
@@ -616,8 +617,6 @@ register_with_unique_usb_id (XdpUsb       *self,
 
   return g_steal_pointer (&id);
 }
-
-/* Callbacks */
 
 static void
 handle_session_event (XdpUsb        *self,
@@ -729,8 +728,6 @@ gudev_client_uevent_cb (GUdevClient *client,
         g_critical ("Error removing USB device from syspaths_to_ids table");
     }
 }
-
-/* CreateSession */
 
 static XdpOptionKey usb_create_session_options[] = {
   { "session_handle_token", G_VARIANT_TYPE_STRING, NULL },
@@ -857,8 +854,6 @@ handle_create_session (XdpDbusUsb            *object,
   return G_DBUS_METHOD_INVOCATION_HANDLED;
 }
 
-/* EnumerateDevices */
-
 static XdpOptionKey usb_enumerate_devices_options[] = {
 };
 
@@ -936,8 +931,6 @@ handle_enumerate_devices (XdpDbusUsb            *object,
 
   return G_DBUS_METHOD_INVOCATION_HANDLED;
 }
-
-/* AccessDevice */
 
 static XdpOptionKey usb_device_options[] = {
   { "writable", G_VARIANT_TYPE_BOOLEAN, NULL },
@@ -1245,10 +1238,6 @@ handle_acquire_devices (XdpDbusUsb            *object,
   return G_DBUS_METHOD_INVOCATION_HANDLED;
 }
 
-/* FinishAccessDevices */
-
-#define MAX_DEVICES 8
-
 static gboolean
 handle_finish_acquire_devices (XdpDbusUsb            *object,
                                GDBusMethodInvocation *invocation,
@@ -1396,7 +1385,7 @@ handle_finish_acquire_devices (XdpDbusUsb            *object,
         }
       else
         {
-	  usb_owned_device_ref (owned_device);
+          usb_owned_device_ref (owned_device);
         }
 
       g_variant_dict_insert (&dict, "success", "b", TRUE);
@@ -1424,8 +1413,6 @@ handle_finish_acquire_devices (XdpDbusUsb            *object,
 
   return G_DBUS_METHOD_INVOCATION_HANDLED;
 }
-
-/* ReleaseDevice */
 
 static XdpOptionKey usb_release_devices_options[] = {
 };
