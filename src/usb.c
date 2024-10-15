@@ -584,7 +584,7 @@ gudev_device_to_variant (XdpUsb        *self,
                              g_variant_dict_end (&udev_properties_dict));
     }
 
-  return g_variant_dict_end (&device_variant_dict);
+  return g_variant_ref_sink (g_variant_dict_end (&device_variant_dict));
 }
 
 static char *
@@ -645,7 +645,8 @@ handle_session_event (XdpUsb        *self,
   g_variant_builder_init (&devices_builder, G_VARIANT_TYPE ("a(ssa{sv})"));
 
   device_variant = gudev_device_to_variant (self, sender_info, device);
-  g_variant_builder_add (&devices_builder, "(ss@a{sv})", action, id, g_steal_pointer (&device_variant));
+  g_variant_builder_add (&devices_builder, "(ss@a{sv})",
+                         action, id, g_steal_pointer (&device_variant));
 
   g_dbus_connection_emit_signal (session->connection,
                                  session->sender,
