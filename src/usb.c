@@ -821,7 +821,7 @@ handle_create_session (XdpDbusUsb            *object,
       g_dbus_method_invocation_return_gerror (invocation, error);
       return G_DBUS_METHOD_INVOCATION_HANDLED;
     }
-  options = g_variant_builder_end (&options_builder);
+  options = g_variant_ref_sink (g_variant_builder_end (&options_builder));
 
   connection = g_dbus_method_invocation_get_connection (invocation);
   usb_session = xdp_usb_session_new (connection, call, options, &error);
@@ -875,7 +875,7 @@ list_permitted_devices (XdpUsb *self,
         g_variant_builder_add (&builder, "(s@a{sv})", id, gudev_device_to_variant (self, sender_info, device));
     }
 
-  return g_variant_builder_end (&builder);
+  return g_variant_ref_sink (g_variant_builder_end (&builder));
 }
 
 static gboolean
@@ -919,7 +919,7 @@ handle_enumerate_devices (XdpDbusUsb            *object,
       g_dbus_method_invocation_return_gerror (invocation, error);
       return G_DBUS_METHOD_INVOCATION_HANDLED;
     }
-  options = g_variant_builder_end (&options_builder);
+  options = g_variant_ref_sink (g_variant_builder_end (&options_builder));
 
   devices = list_permitted_devices(self, call);
 
@@ -1127,7 +1127,8 @@ filter_access_devices (XdpUsb         *self,
                              g_variant_dict_end (&device_options_dict));
     }
 
-  *out_filtered_devices = g_variant_builder_end (&filtered_devices_builder);
+  *out_filtered_devices =
+    g_variant_ref_sink (g_variant_builder_end (&filtered_devices_builder));
   return TRUE;
 }
 
@@ -1192,7 +1193,7 @@ handle_acquire_devices (XdpDbusUsb            *object,
       g_dbus_method_invocation_return_gerror (invocation, error);
       return G_DBUS_METHOD_INVOCATION_HANDLED;
     }
-  options = g_variant_builder_end (&options_builder);
+  options = g_variant_ref_sink (g_variant_builder_end (&options_builder));
 
   sender_info = usb_sender_info_from_request (self, request);
   g_assert (sender_info != NULL);
@@ -1441,7 +1442,7 @@ handle_release_devices (XdpDbusUsb            *object,
       g_dbus_method_invocation_return_gerror (invocation, error);
       return G_DBUS_METHOD_INVOCATION_HANDLED;
     }
-  options = g_variant_builder_end (&options_builder);
+  options = g_variant_ref_sink (g_variant_builder_end (&options_builder));
 
   sender_info = usb_sender_info_from_call (self, call);
   g_assert (sender_info != NULL);
