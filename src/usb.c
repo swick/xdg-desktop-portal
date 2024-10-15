@@ -1538,6 +1538,13 @@ xdp_usb_init (XdpUsb *self)
     }
 }
 
+static void
+peer_died_cb (const char *sender)
+{
+  if (usb && g_hash_table_remove (usb->sender_infos, sender))
+    g_debug ("Revoked acquired USB devices from sender %s", sender);
+}
+
 GDBusInterfaceSkeleton *
 xdp_usb_create (GDBusConnection *connection,
                 const char      *dbus_name)
@@ -1556,6 +1563,8 @@ xdp_usb_create (GDBusConnection *connection,
       return NULL;
     }
 
+  xdp_connection_track_name_owners (connection, peer_died_cb);
+
   g_dbus_proxy_set_default_timeout (G_DBUS_PROXY (usb_impl), G_MAXINT);
 
   g_assert (usb_impl != NULL);
@@ -1564,11 +1573,4 @@ xdp_usb_create (GDBusConnection *connection,
   usb = g_object_new (xdp_usb_get_type (), NULL);
 
   return G_DBUS_INTERFACE_SKELETON (usb);
-}
-
-void
-xdp_usb_revoke_devices_from_sender (const char *sender)
-{
-  if (usb && g_hash_table_remove (usb->sender_infos, sender))
-    g_debug ("Revoked acquired USB devices from sender %s", sender);
 }

@@ -26,5 +26,3 @@
 
 GDBusInterfaceSkeleton * xdp_usb_create (GDBusConnection *connection,
 					 const char      *dbus_name);
-
-void xdp_usb_revoke_devices_from_sender (const char *sender);
