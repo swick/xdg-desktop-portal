@@ -197,12 +197,12 @@ unique_permission_id_for_device (GUdevDevice *device)
 }
 
 static void
-usb_device_acquire_data_free (UsbDeviceAcquireData *access_data)
+usb_device_acquire_data_free (UsbDeviceAcquireData *acquire_data)
 {
-  g_return_if_fail (access_data != NULL);
+  g_return_if_fail (acquire_data != NULL);
 
-  g_clear_pointer (&access_data->device_id, g_free);
-  g_clear_pointer (&access_data, g_free);
+  g_clear_pointer (&acquire_data->device_id, g_free);
+  g_clear_pointer (&acquire_data, g_free);
 }
 
 static UsbOwnedDevice *
@@ -231,6 +231,8 @@ usb_owned_device_unref (UsbOwnedDevice *owned_device)
 static void
 usb_sender_info_unref (UsbSenderInfo *sender_info)
 {
+  g_return_if_fail (sender_info != NULL);
+
   if (g_atomic_ref_count_dec (&sender_info->ref_count))
     {
       g_clear_object (&sender_info->app_info);
@@ -525,7 +527,7 @@ gudev_device_to_variant (XdpUsb        *self,
   const char *device_file = NULL;
   size_t n_added_properties = 0;
 
-  const char * const allowed_udev_properties[] = {
+  static const char * const allowed_udev_properties[] = {
     "ID_INPUT_JOYSTICK",
     "ID_MODEL_ID",
     "ID_MODEL_ENC",
@@ -645,8 +647,7 @@ handle_session_event (XdpUsb        *self,
   g_variant_builder_init (&devices_builder, G_VARIANT_TYPE ("a(ssa{sv})"));
 
   device_variant = gudev_device_to_variant (self, sender_info, device);
-  g_variant_builder_add (&devices_builder, "(ss@a{sv})",
-                         action, id, g_steal_pointer (&device_variant));
+  g_variant_builder_add (&devices_builder, "(ss@a{sv})", action, id, device_variant);
 
   g_dbus_connection_emit_signal (session->connection,
                                  session->sender,
@@ -790,7 +791,7 @@ handle_create_session (XdpDbusUsb            *object,
   Call *call;
   XdpUsb *self;
 
-  XdpOptionKey usb_create_session_options[] = {
+  static const XdpOptionKey usb_create_session_options[] = {
     { "session_handle_token", G_VARIANT_TYPE_STRING, NULL },
   };
 
@@ -891,7 +892,7 @@ handle_enumerate_devices (XdpDbusUsb            *object,
   Call *call;
   XdpUsb *self;
 
-  XdpOptionKey usb_enumerate_devices_options[] = {
+  static const XdpOptionKey usb_enumerate_devices_options[] = {
   };
 
   self = XDP_USB (object);
@@ -921,7 +922,7 @@ handle_enumerate_devices (XdpDbusUsb            *object,
     }
   options = g_variant_ref_sink (g_variant_builder_end (&options_builder));
 
-  devices = list_permitted_devices(self, call);
+  devices = list_permitted_devices (self, call);
 
   xdp_dbus_usb_complete_enumerate_devices (object, invocation, g_steal_pointer (&devices));
 
@@ -1026,7 +1027,7 @@ filter_access_devices (XdpUsb         *self,
   const char *device_id;
   size_t n_devices;
 
-  XdpOptionKey usb_device_options[] = {
+  static const XdpOptionKey usb_device_options[] = {
     { "writable", G_VARIANT_TYPE_BOOLEAN, NULL },
   };
 
@@ -1149,7 +1150,7 @@ handle_acquire_devices (XdpDbusUsb            *object,
   Request *request;
   XdpUsb *self;
 
-  XdpOptionKey usb_access_devices_options[] = {
+  static const XdpOptionKey usb_acquire_devices_options[] = {
   };
 
   self = XDP_USB (object);
@@ -1186,8 +1187,8 @@ handle_acquire_devices (XdpDbusUsb            *object,
   g_variant_builder_init (&options_builder, G_VARIANT_TYPE_VARDICT);
   if (!xdp_filter_options (arg_options,
                            &options_builder,
-                           usb_access_devices_options,
-                           G_N_ELEMENTS (usb_access_devices_options),
+                           usb_acquire_devices_options,
+                           G_N_ELEMENTS (usb_acquire_devices_options),
                            &error))
     {
       g_dbus_method_invocation_return_gerror (invocation, error);
@@ -1224,8 +1225,8 @@ handle_acquire_devices (XdpDbusUsb            *object,
                                           request->id,
                                           arg_parent_window,
                                           xdp_app_info_get_id (request->app_info),
-                                          g_steal_pointer (&filtered_devices),
-                                          g_steal_pointer (&options),
+                                          filtered_devices,
+                                          options,
                                           NULL,
                                           usb_acquire_devices_cb,
                                           g_object_ref (request));
@@ -1424,7 +1425,7 @@ handle_release_devices (XdpDbusUsb            *object,
   Call *call;
   XdpUsb *self;
 
-  XdpOptionKey usb_release_devices_options[] = {
+  static const XdpOptionKey usb_release_devices_options[] = {
   };
 
   self = XDP_USB (object);
@@ -1489,7 +1490,7 @@ static void
 xdp_usb_init (XdpUsb *self)
 {
   g_autolist(GUdevDevice) devices = NULL;
-  const char * const subsystems[] = {
+  static const char * const subsystems[] = {
     "usb",
     NULL,
   };
