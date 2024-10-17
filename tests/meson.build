@@ -307,6 +307,7 @@ if enable_pytest
     'test_location.py',
     'test_remotedesktop.py',
     'test_trash.py',
+    'test_usb.py',
   ]
   foreach pytest_file : pytest_files
     configure_file(
