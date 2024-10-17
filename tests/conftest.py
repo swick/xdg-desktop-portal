@@ -135,6 +135,15 @@ def app_id():
 
 
 @pytest.fixture
+def usb_queries():
+    """
+    Default fixture providing the usb queries the connecting process can
+    enumerate
+    """
+    return None
+
+
+@pytest.fixture
 def umockdev():
     """
     Default fixture providing a umockdev testbed
@@ -149,6 +158,7 @@ def portal_mock(
     required_templates,
     template_params,
     app_id,
+    usb_queries,
     umockdev,
 ) -> PortalMock:
     """
@@ -158,6 +168,7 @@ def portal_mock(
         dbus_test_case,
         portal_name,
         app_id=app_id,
+        usb_queries=usb_queries,
         umockdev=umockdev,
     )
 
