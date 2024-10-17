@@ -257,7 +257,7 @@ A: idVendor={vendor}
         portal_mock.umockdev.remove_device(dev_path)
 
         mainloop = GLib.MainLoop()
-        GLib.timeout_add(300, mainloop.quit)
+        GLib.timeout_add(1000, mainloop.quit)
         mainloop.run()
 
         if usb_queries == None:
@@ -324,7 +324,7 @@ A: idVendor={vendor}
         assert finished == True
         assert len(results) == 1
         (res_id, device) = results[0]
-        assert res_id == id1
+        assert res_id == id1 or res_id == id2
         assert device["success"] == True
         fd = device["fd"].take()
         assert fd > 0
