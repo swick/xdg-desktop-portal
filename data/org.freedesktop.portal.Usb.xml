@@ -64,11 +64,8 @@
         Enumerates all connected USB devices that this application has permission
         to see.
 
-        The following results are returned in the @device vardict:
-
-        * ``id`` (``s``)
-
-          The portal-specific unique identifier of the device.
+        Each element of the @devices array contains the device ID, and a device
+        information vardict with the following keys:
 
         * ``parent`` (``s``)
 
@@ -104,17 +101,16 @@
     <!--
         AcquireDevices:
         @parent_window: Identifier for the application window, see :ref:`Common Conventions <window-identifiers>`.
-        @devices: Array of device identifiers, device information, and access options
+        @devices: Array of device identifiers and access options
         @options: Vardict with optional further information
         @handle: Object path for the :ref:`org.freedesktop.portal.Request` object representing this call
 
-        Request to acquires (i.e. open) the given device nodes.  The
-        process of acquiring is finished by calling
-        `FinishAcquireDevices` after the request emitted a `Success`
-        response.
+        Request to acquires (i.e. open) the given device nodes.  The process of
+        acquiring is finished by calling `FinishAcquireDevices` after the
+        request emitted a `Success` response.
 
-        Each element of the @devices array contains the device ID, and the
-        following keys:
+        Each element of the @devices array contains the device ID, and an access
+        options vardict with the following keys:
 
         * ``writable`` (``b``)
 
@@ -153,11 +149,16 @@
         descriptor which can happen at any point. Devices which are
         not needed anymore should be passed to `ReleaseDevices`.
 
+        If not all devices could be send, @finished will be false and
+        org.freedesktop.portal.Usb.FinishAcquireDevices must be called again
+        until @finished is true, before calling
+        org.freedesktop.portal.Usb.AcquireDevices again.
+
         This method can only be called once, and only after calling
         org.freedesktop.portal.Usb.AcquireDevices().
 
-        Each element of the @devices_fds array contains the device ID, and the
-        following keys:
+        Each element of the @results array contains the device ID, and a vardict
+        with the following keys:
 
         * ``success`` (``b``)
 

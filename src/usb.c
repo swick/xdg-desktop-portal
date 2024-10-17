@@ -1368,9 +1368,9 @@ handle_finish_acquire_devices (XdpDbusUsb            *object,
         }
       else
         {
-	  /* If we have already acquired the device, just return the fd again */
-	  fd_index = g_unix_fd_list_append (fds, owned_device->fd, &error);
-	}
+          /* If we have already acquired the device, just return the fd again */
+          fd_index = g_unix_fd_list_append (fds, owned_device->fd, &error);
+        }
 
       if (error)
         {
