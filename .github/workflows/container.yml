@@ -1,5 +1,5 @@
 env:
-  IMAGE_TAG: 20241015-2
+  IMAGE_TAG: 20241017-3
 
 on:
   workflow_call:

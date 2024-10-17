@@ -290,17 +290,23 @@ A: idVendor={vendor}
             "00001",
         )
 
+        possible_vendors = ["04a9", "04aa"]
+
         usb_intf = portal_mock.get_dbus_interface()
         devices = usb_intf.EnumerateDevices({})
         assert len(devices) == 2
         (id1, dev_info1) = devices[0]
         assert id1
         assert dev_info1
-        assert dev_info1["properties"]["ID_VENDOR_ID"] == "04a9"
+        vendor_id = dev_info1["properties"]["ID_VENDOR_ID"]
+        assert vendor_id in possible_vendors
+        possible_vendors.remove(vendor_id)
         (id2, dev_info2) = devices[1]
         assert id2
         assert dev_info2
-        assert dev_info2["properties"]["ID_VENDOR_ID"] == "04aa"
+        vendor_id = dev_info2["properties"]["ID_VENDOR_ID"]
+        assert vendor_id in possible_vendors
+        possible_vendors.remove(vendor_id)
 
         request = portal_mock.create_request()
         response = request.call(
