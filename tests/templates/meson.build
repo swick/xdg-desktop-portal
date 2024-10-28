@@ -1,5 +1,6 @@
 template_files = [
   '__init__.py',
+  'account.py',
   'background.py',
   'clipboard.py',
   'email.py',

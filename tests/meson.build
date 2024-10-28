@@ -287,6 +287,7 @@ if enable_pytest
     'conftest.py',
     'asan.suppression',
     '__init__.py',
+    'test_account.py',
     'test_background.py',
     'test_clipboard.py',
     'test_email.py',
