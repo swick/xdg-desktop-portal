@@ -46,25 +46,23 @@ def ComposeEmail(self, handle, app_id, parent_window, options, cb_success, cb_er
 
         response = Response(self.response, {})
 
+        def closed_callback():
+            response = Response(2, {})
+            logger.debug(f"ComposeEmail Close() response {response}")
+            cb_success(response.response, response.results)
+
+        def reply_callback():
+            logger.debug(f"ComposeEmail with response {response}")
+            cb_success(response.response, response.results)
+
         request = ImplRequest(self, BUS_NAME, handle)
-
         if self.expect_close:
-
-            def closed_callback():
-                response = Response(2, {})
-                logger.debug(f"ComposeEmail Close() response {response}")
-                cb_success(response.response, response.results)
-
             request.export(closed_callback)
         else:
             request.export()
 
-            def reply():
-                logger.debug(f"ComposeEmail with response {response}")
-                cb_success(response.response, response.results)
-
             logger.debug(f"scheduling delay of {self.delay}")
-            GLib.timeout_add(self.delay, reply)
+            GLib.timeout_add(self.delay, reply_callback)
     except Exception as e:
         logger.critical(e)
         cb_error(e)
