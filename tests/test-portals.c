@@ -12,7 +12,6 @@
 #ifdef HAVE_LIBPORTAL
 #include "account.h"
 #include "camera.h"
-#include "email.h"
 #include "filechooser.h"
 #include "inhibit.h"
 #include "notification.h"
@@ -424,7 +423,6 @@ test_##pp##_exists (void) \
 
 DEFINE_TEST_EXISTS(account, ACCOUNT, 1)
 DEFINE_TEST_EXISTS(camera, CAMERA, 1)
-DEFINE_TEST_EXISTS(email, EMAIL, 4)
 DEFINE_TEST_EXISTS(file_chooser, FILE_CHOOSER, 4)
 DEFINE_TEST_EXISTS(game_mode, GAME_MODE, 4)
 DEFINE_TEST_EXISTS(inhibit, INHIBIT, 3)
@@ -454,7 +452,6 @@ main (int argc, char **argv)
 
   g_test_add_func ("/portal/account/exists", test_account_exists);
   g_test_add_func ("/portal/camera/exists", test_camera_exists);
-  g_test_add_func ("/portal/email/exists", test_email_exists);
   g_test_add_func ("/portal/filechooser/exists", test_file_chooser_exists);
   g_test_add_func ("/portal/gamemode/exists", test_game_mode_exists);
   g_test_add_func ("/portal/inhibit/exists", test_inhibit_exists);
@@ -475,15 +472,6 @@ main (int argc, char **argv)
   g_test_add_func ("/portal/account/close", test_account_close);
   g_test_add_func ("/portal/account/reason", test_account_reason);
   g_test_add_func ("/portal/account/parallel", test_account_parallel);
-
-  g_test_add_func ("/portal/email/basic", test_email_basic);
-  g_test_add_func ("/portal/email/delay", test_email_delay);
-  g_test_add_func ("/portal/email/cancel", test_email_cancel);
-  g_test_add_func ("/portal/email/close", test_email_close);
-  g_test_add_func ("/portal/email/address", test_email_address);
-  g_test_add_func ("/portal/email/punycode_address", test_email_punycode_address);
-  g_test_add_func ("/portal/email/subject", test_email_subject);
-  g_test_add_func ("/portal/email/parallel", test_email_parallel);
 
   g_test_add_func ("/portal/screenshot/basic", test_screenshot_basic);
   g_test_add_func ("/portal/screenshot/delay", test_screenshot_delay);

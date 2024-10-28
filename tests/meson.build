@@ -66,7 +66,6 @@ test_backends = executable(
   'backend/access.c',
   'backend/account.c',
   'backend/appchooser.c',
-  'backend/email.c',
   'backend/filechooser.c',
   'backend/inhibit.c',
   'backend/lockdown.c',
@@ -96,7 +95,6 @@ if have_libportal
   portals_test_sources += files(
     'account.c',
     'camera.c',
-    'email.c',
     'filechooser.c',
     'inhibit.c',
     'notification.c',
@@ -153,7 +151,6 @@ portal_tests = [
   'account',
   'camera',
   'color',
-  'email',
   'inhibit',
   'notification',
   'openfile',
