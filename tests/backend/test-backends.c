@@ -6,7 +6,6 @@
 #include "xdp-impl-dbus.h"
 
 #include "access.h"
-#include "account.h"
 #include "appchooser.h"
 #include "background.h"
 #include "filechooser.h"
@@ -29,7 +28,6 @@ on_bus_acquired (GDBusConnection *connection,
                  gpointer         user_data)
 {
   access_init (connection, BACKEND_OBJECT_PATH);
-  account_init (connection, BACKEND_OBJECT_PATH);
   appchooser_init (connection, BACKEND_OBJECT_PATH);
   file_chooser_init (connection, BACKEND_OBJECT_PATH);
   inhibit_init (connection, BACKEND_OBJECT_PATH);

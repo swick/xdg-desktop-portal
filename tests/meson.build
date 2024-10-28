@@ -64,7 +64,6 @@ test_backends = executable(
   'test-backends',
   'backend/test-backends.c',
   'backend/access.c',
-  'backend/account.c',
   'backend/appchooser.c',
   'backend/filechooser.c',
   'backend/inhibit.c',
@@ -92,7 +91,6 @@ if have_libportal
   portals_test_deps += [libportal_dep]
 
   portals_test_sources += files(
-    'account.c',
     'camera.c',
     'filechooser.c',
     'inhibit.c',
@@ -146,7 +144,6 @@ limited_portals = executable(
 # easier.
 # Keep in sync with test-portals.c
 portal_tests = [
-  'account',
   'camera',
   'color',
   'inhibit',
