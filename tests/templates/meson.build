@@ -8,6 +8,7 @@ template_files = [
   'globalshortcuts.py',
   'inputcapture.py',
   'remotedesktop.py',
+  'screenshot.py',
   'wallpaper.py',
 ]
 foreach template_file : template_files
