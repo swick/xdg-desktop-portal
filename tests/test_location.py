@@ -91,7 +91,6 @@ class TestLocation:
 
     def test_bad_accuracy(self, portals, dbus_con):
         location_intf = xdp.get_portal_iface(dbus_con, "Location")
-        had_error = False
         try:
             location_intf.CreateSession(
                 {
@@ -99,8 +98,6 @@ class TestLocation:
                     "accuracy": dbus.UInt32(22),
                 }
             )
+            assert False, "This statement should not be reached"
         except dbus.exceptions.DBusException as e:
-            had_error = True
             assert e.get_dbus_name() == "org.freedesktop.portal.Error.InvalidArgument"
-        finally:
-            assert had_error
