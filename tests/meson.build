@@ -73,7 +73,6 @@ test_backends = executable(
   'backend/print.c',
   'backend/screenshot.c',
   'backend/settings.c',
-  'backend/wallpaper.c',
   'backend/xdp-request.c',
   'backend/xdp-session.c',
   'glib-backports.c',
@@ -101,7 +100,6 @@ if have_libportal
     'openuri.c',
     'print.c',
     'screenshot.c',
-    'wallpaper.c',
     'glib-backports.c',
   )
 endif
@@ -160,7 +158,6 @@ portal_tests = [
   'savefile',
   'screenshot',
   'settings',
-  'wallpaper',
 ]
 
 test_env = env_tests

@@ -18,7 +18,6 @@
 #include "openuri.h"
 #include "print.h"
 #include "screenshot.h"
-#include "wallpaper.h"
 #endif
 
 #include "utils.h"
@@ -433,7 +432,6 @@ DEFINE_TEST_EXISTS(print, PRINT, 3)
 DEFINE_TEST_EXISTS(proxy_resolver, PROXY_RESOLVER, 1)
 DEFINE_TEST_EXISTS(screenshot, SCREENSHOT, 2)
 DEFINE_TEST_EXISTS(settings, SETTINGS, 2)
-DEFINE_TEST_EXISTS(wallpaper, WALLPAPER, 1)
 DEFINE_TEST_EXISTS(realtime, REALTIME, 1)
 
 int
@@ -462,7 +460,6 @@ main (int argc, char **argv)
   g_test_add_func ("/portal/proxyresolver/exists", test_proxy_resolver_exists);
   g_test_add_func ("/portal/screenshot/exists", test_screenshot_exists);
   g_test_add_func ("/portal/settings/exists", test_settings_exists);
-  g_test_add_func ("/portal/wallpaper/exists", test_wallpaper_exists);
   g_test_add_func ("/portal/realtime/exists", test_realtime_exists);
 
 #ifdef HAVE_LIBPORTAL
@@ -550,12 +547,6 @@ main (int argc, char **argv)
   g_test_add_func ("/portal/openuri/lockdown", test_open_uri_lockdown);
   g_test_add_func ("/portal/openuri/directory", test_open_directory);
   g_test_add_func ("/portal/openuri/scheme-supported", test_scheme_supported);
-
-  g_test_add_func ("/portal/wallpaper/basic", test_wallpaper_basic);
-  g_test_add_func ("/portal/wallpaper/delay", test_wallpaper_delay);
-  g_test_add_func ("/portal/wallpaper/cancel1", test_wallpaper_cancel1);
-  g_test_add_func ("/portal/wallpaper/cancel2", test_wallpaper_cancel2);
-  g_test_add_func ("/portal/wallpaper/permission", test_wallpaper_permission);
 
   g_test_add_func ("/portal/notification/basic", test_notification_basic);
   g_test_add_func ("/portal/notification/buttons", test_notification_buttons);

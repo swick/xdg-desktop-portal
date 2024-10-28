@@ -16,7 +16,6 @@
 #include "print.h"
 #include "screenshot.h"
 #include "settings.h"
-#include "wallpaper.h"
 
 #include "src/glib-backports.h"
 
@@ -39,7 +38,6 @@ on_bus_acquired (GDBusConnection *connection,
   print_init (connection, BACKEND_OBJECT_PATH);
   screenshot_init (connection, BACKEND_OBJECT_PATH);
   settings_init (connection, BACKEND_OBJECT_PATH);
-  wallpaper_init (connection, BACKEND_OBJECT_PATH);
 }
 
 static void
