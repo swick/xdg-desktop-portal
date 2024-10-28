@@ -33,7 +33,6 @@ on_bus_acquired (GDBusConnection *connection,
   access_init (connection, BACKEND_OBJECT_PATH);
   account_init (connection, BACKEND_OBJECT_PATH);
   appchooser_init (connection, BACKEND_OBJECT_PATH);
-  background_init (connection, BACKEND_OBJECT_PATH);
   email_init (connection, BACKEND_OBJECT_PATH);
   file_chooser_init (connection, BACKEND_OBJECT_PATH);
   inhibit_init (connection, BACKEND_OBJECT_PATH);

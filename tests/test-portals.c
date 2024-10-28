@@ -11,7 +11,6 @@
 
 #ifdef HAVE_LIBPORTAL
 #include "account.h"
-#include "background.h"
 #include "camera.h"
 #include "email.h"
 #include "filechooser.h"
@@ -424,7 +423,6 @@ test_##pp##_exists (void) \
 }
 
 DEFINE_TEST_EXISTS(account, ACCOUNT, 1)
-DEFINE_TEST_EXISTS(background, BACKGROUND, 2)
 DEFINE_TEST_EXISTS(camera, CAMERA, 1)
 DEFINE_TEST_EXISTS(email, EMAIL, 4)
 DEFINE_TEST_EXISTS(file_chooser, FILE_CHOOSER, 4)
@@ -455,7 +453,6 @@ main (int argc, char **argv)
   g_test_init (&argc, &argv, NULL);
 
   g_test_add_func ("/portal/account/exists", test_account_exists);
-  g_test_add_func ("/portal/background/exists", test_background_exists);
   g_test_add_func ("/portal/camera/exists", test_camera_exists);
   g_test_add_func ("/portal/email/exists", test_email_exists);
   g_test_add_func ("/portal/filechooser/exists", test_file_chooser_exists);
@@ -571,11 +568,6 @@ main (int argc, char **argv)
   g_test_add_func ("/portal/wallpaper/cancel1", test_wallpaper_cancel1);
   g_test_add_func ("/portal/wallpaper/cancel2", test_wallpaper_cancel2);
   g_test_add_func ("/portal/wallpaper/permission", test_wallpaper_permission);
-
-  g_test_add_func ("/portal/background/basic1", test_background_basic1);
-  g_test_add_func ("/portal/background/basic2", test_background_basic2);
-  g_test_add_func ("/portal/background/commandline", test_background_commandline);
-  g_test_add_func ("/portal/background/reason", test_background_reason);
 
   g_test_add_func ("/portal/notification/basic", test_notification_basic);
   g_test_add_func ("/portal/notification/buttons", test_notification_buttons);
