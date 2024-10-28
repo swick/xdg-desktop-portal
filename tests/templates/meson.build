@@ -1,5 +1,6 @@
 template_files = [
   '__init__.py',
+  'background.py',
   'clipboard.py',
   'email.py',
   'geoclue2.py',
