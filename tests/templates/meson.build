@@ -7,6 +7,7 @@ template_files = [
   'globalshortcuts.py',
   'inputcapture.py',
   'remotedesktop.py',
+  'wallpaper.py',
 ]
 foreach template_file : template_files
   configure_file(

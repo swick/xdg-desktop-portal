@@ -27,6 +27,14 @@ ASV = Dict[str, Any]
 logger = logging.getLogger("tests")
 
 
+def get_permission_store_iface(dbus_con):
+    obj = dbus_con.get_object(
+        "org.freedesktop.impl.portal.PermissionStore",
+        "/org/freedesktop/impl/portal/PermissionStore",
+    )
+    return dbus.Interface(obj, "org.freedesktop.impl.portal.PermissionStore")
+
+
 def get_mock_iface(dbus_con):
     obj = dbus_con.get_object(
         "org.freedesktop.impl.portal.Test", "/org/freedesktop/portal/desktop"
