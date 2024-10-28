@@ -39,13 +39,13 @@ def SetWallpaperURI(
             f"SetWallpaperURI({handle}, {app_id}, {parent_window}, {uri}, {options})"
         )
 
-        response = Response(self.response, {})
-
         def closed_callback():
+            response = Response(2, {})
             logger.debug(f"SetWallpaperURI Close() response {response}")
             cb_success(response.response)
 
         def reply_callback():
+            response = Response(self.response, {})
             logger.debug(f"SetWallpaperURI with response {response}")
             cb_success(response.response)
 
