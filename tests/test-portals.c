@@ -20,7 +20,6 @@
 #include "openuri.h"
 #include "print.h"
 #include "screenshot.h"
-#include "trash.h"
 #include "wallpaper.h"
 #endif
 
@@ -438,7 +437,6 @@ DEFINE_TEST_EXISTS(print, PRINT, 3)
 DEFINE_TEST_EXISTS(proxy_resolver, PROXY_RESOLVER, 1)
 DEFINE_TEST_EXISTS(screenshot, SCREENSHOT, 2)
 DEFINE_TEST_EXISTS(settings, SETTINGS, 2)
-DEFINE_TEST_EXISTS(trash, TRASH, 1)
 DEFINE_TEST_EXISTS(wallpaper, WALLPAPER, 1)
 DEFINE_TEST_EXISTS(realtime, REALTIME, 1)
 
@@ -470,7 +468,6 @@ main (int argc, char **argv)
   g_test_add_func ("/portal/proxyresolver/exists", test_proxy_resolver_exists);
   g_test_add_func ("/portal/screenshot/exists", test_screenshot_exists);
   g_test_add_func ("/portal/settings/exists", test_settings_exists);
-  g_test_add_func ("/portal/trash/exists", test_trash_exists);
   g_test_add_func ("/portal/wallpaper/exists", test_wallpaper_exists);
   g_test_add_func ("/portal/realtime/exists", test_realtime_exists);
 
@@ -502,8 +499,6 @@ main (int argc, char **argv)
   g_test_add_func ("/portal/color/cancel", test_color_cancel);
   g_test_add_func ("/portal/color/close", test_color_close);
   g_test_add_func ("/portal/color/parallel", test_color_parallel);
-
-  g_test_add_func ("/portal/trash/file", test_trash_file);
 
   g_test_add_func ("/portal/openfile/basic", test_open_file_basic);
   g_test_add_func ("/portal/openfile/delay", test_open_file_delay);

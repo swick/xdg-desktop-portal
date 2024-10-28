@@ -105,7 +105,6 @@ if have_libportal
     'openuri.c',
     'print.c',
     'screenshot.c',
-    'trash.c',
     'wallpaper.c',
     'glib-backports.c',
   )
@@ -167,7 +166,6 @@ portal_tests = [
   'savefile',
   'screenshot',
   'settings',
-  'trash',
   'wallpaper',
 ]
 
