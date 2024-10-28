@@ -16,7 +16,6 @@
 #include "notification.h"
 #include "openuri.h"
 #include "print.h"
-#include "screenshot.h"
 #endif
 
 #include "utils.h"
@@ -428,7 +427,6 @@ DEFINE_TEST_EXISTS(notification, NOTIFICATION, 2)
 DEFINE_TEST_EXISTS(open_uri, OPEN_URI, 5)
 DEFINE_TEST_EXISTS(print, PRINT, 3)
 DEFINE_TEST_EXISTS(proxy_resolver, PROXY_RESOLVER, 1)
-DEFINE_TEST_EXISTS(screenshot, SCREENSHOT, 2)
 DEFINE_TEST_EXISTS(settings, SETTINGS, 2)
 DEFINE_TEST_EXISTS(realtime, REALTIME, 1)
 
@@ -455,23 +453,10 @@ main (int argc, char **argv)
   g_test_add_func ("/portal/openuri/exists", test_open_uri_exists);
   g_test_add_func ("/portal/print/exists", test_print_exists);
   g_test_add_func ("/portal/proxyresolver/exists", test_proxy_resolver_exists);
-  g_test_add_func ("/portal/screenshot/exists", test_screenshot_exists);
   g_test_add_func ("/portal/settings/exists", test_settings_exists);
   g_test_add_func ("/portal/realtime/exists", test_realtime_exists);
 
 #ifdef HAVE_LIBPORTAL
-  g_test_add_func ("/portal/screenshot/basic", test_screenshot_basic);
-  g_test_add_func ("/portal/screenshot/delay", test_screenshot_delay);
-  g_test_add_func ("/portal/screenshot/cancel", test_screenshot_cancel);
-  g_test_add_func ("/portal/screenshot/close", test_screenshot_close);
-  g_test_add_func ("/portal/screenshot/parallel", test_screenshot_parallel);
-
-  g_test_add_func ("/portal/color/basic", test_color_basic);
-  g_test_add_func ("/portal/color/delay", test_color_delay);
-  g_test_add_func ("/portal/color/cancel", test_color_cancel);
-  g_test_add_func ("/portal/color/close", test_color_close);
-  g_test_add_func ("/portal/color/parallel", test_color_parallel);
-
   g_test_add_func ("/portal/openfile/basic", test_open_file_basic);
   g_test_add_func ("/portal/openfile/delay", test_open_file_delay);
   g_test_add_func ("/portal/openfile/close", test_open_file_close);

@@ -70,7 +70,6 @@ test_backends = executable(
   'backend/lockdown.c',
   'backend/notification.c',
   'backend/print.c',
-  'backend/screenshot.c',
   'backend/settings.c',
   'backend/xdp-request.c',
   'backend/xdp-session.c',
@@ -97,7 +96,6 @@ if have_libportal
     'notification.c',
     'openuri.c',
     'print.c',
-    'screenshot.c',
     'glib-backports.c',
   )
 endif
@@ -145,7 +143,6 @@ limited_portals = executable(
 # Keep in sync with test-portals.c
 portal_tests = [
   'camera',
-  'color',
   'inhibit',
   'notification',
   'openfile',
@@ -153,7 +150,6 @@ portal_tests = [
   'prepareprint',
   'print',
   'savefile',
-  'screenshot',
   'settings',
 ]
 
