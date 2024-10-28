@@ -2,26 +2,28 @@
 #
 # This file is formatted with Python Black
 
-
-from tests import Session
-from gi.repository import GLib
+import tests as xdp
 
 import dbus
 import pytest
 import time
+from gi.repository import GLib
 
 
 @pytest.fixture
-def portal_name():
-    return "GlobalShortcuts"
+def required_templates():
+    return {"globalshortcuts": {}}
 
 
 class TestGlobalShortcuts:
-    def test_version(self, portal_mock):
-        portal_mock.check_version(1)
+    def test_version(self, portals, dbus_con):
+        xdp.check_version(dbus_con, "GlobalShortcuts", 1)
 
-    def test_global_shortcuts_create_close_session(self, portal_mock, app_id):
-        request = portal_mock.create_request()
+    def test_global_shortcuts_create_close_session(self, portals, dbus_con, app_id):
+        globalshortcuts_intf = xdp.get_portal_iface(dbus_con, "GlobalShortcuts")
+        mock_intf = xdp.get_mock_iface(dbus_con)
+
+        request = xdp.Request(dbus_con, globalshortcuts_intf)
         options = {
             "session_handle_token": "session_token0",
         }
@@ -32,9 +34,9 @@ class TestGlobalShortcuts:
 
         assert response.response == 0
 
-        session = Session.from_response(portal_mock.dbus_con, response)
+        session = xdp.Session.from_response(dbus_con, response)
         # Check the impl portal was called with the right args
-        method_calls = portal_mock.mock_interface.GetMethodCalls("CreateSession")
+        method_calls = mock_intf.GetMethodCalls("CreateSession")
         assert len(method_calls) > 0
         _, args = method_calls[-1]
         assert args[1] == session.handle
@@ -48,9 +50,16 @@ class TestGlobalShortcuts:
 
         assert session.closed
 
-    @pytest.mark.parametrize("params", ({"force-close": 500},))
-    def test_global_shortcuts_create_session_signal_closed(self, portal_mock, app_id):
-        request = portal_mock.create_request()
+    @pytest.mark.parametrize(
+        "template_params", ({"globalshortcuts": {"force-close": 500}},)
+    )
+    def test_global_shortcuts_create_session_signal_closed(
+        self, portals, dbus_con, app_id
+    ):
+        globalshortcuts_intf = xdp.get_portal_iface(dbus_con, "GlobalShortcuts")
+        mock_intf = xdp.get_mock_iface(dbus_con)
+
+        request = xdp.Request(dbus_con, globalshortcuts_intf)
         options = {
             "session_handle_token": "session_token0",
         }
@@ -61,9 +70,9 @@ class TestGlobalShortcuts:
 
         assert response.response == 0
 
-        session = Session.from_response(portal_mock.dbus_con, response)
+        session = xdp.Session.from_response(dbus_con, response)
         # Check the impl portal was called with the right args
-        method_calls = portal_mock.mock_interface.GetMethodCalls("CreateSession")
+        method_calls = mock_intf.GetMethodCalls("CreateSession")
         assert len(method_calls) > 0
         _, args = method_calls[-1]
         assert args[1] == session.handle
@@ -77,8 +86,10 @@ class TestGlobalShortcuts:
 
         assert session.closed
 
-    def test_global_shortcuts_bind_list_shortcuts(self, portal_mock):
-        request = portal_mock.create_request()
+    def test_global_shortcuts_bind_list_shortcuts(self, portals, dbus_con):
+        globalshortcuts_intf = xdp.get_portal_iface(dbus_con, "GlobalShortcuts")
+
+        request = xdp.Request(dbus_con, globalshortcuts_intf)
         options = {
             "session_handle_token": "session_token0",
         }
@@ -89,7 +100,7 @@ class TestGlobalShortcuts:
 
         assert response.response == 0
 
-        session = Session.from_response(portal_mock.dbus_con, response)
+        session = xdp.Session.from_response(dbus_con, response)
 
         shortcuts = [
             (
@@ -108,7 +119,7 @@ class TestGlobalShortcuts:
             ),
         ]
 
-        request = portal_mock.create_request()
+        request = xdp.Request(dbus_con, globalshortcuts_intf)
         response = request.call(
             "BindShortcuts",
             session_handle=session.handle,
@@ -117,7 +128,7 @@ class TestGlobalShortcuts:
             options={},
         )
 
-        request = portal_mock.create_request()
+        request = xdp.Request(dbus_con, globalshortcuts_intf)
         options = {}
         response = request.call(
             "ListShortcuts",
@@ -135,8 +146,11 @@ class TestGlobalShortcuts:
 
         assert session.closed
 
-    def test_global_shortcuts_trigger(self, portal_mock):
-        request = portal_mock.create_request()
+    def test_global_shortcuts_trigger(self, portals, dbus_con):
+        globalshortcuts_intf = xdp.get_portal_iface(dbus_con, "GlobalShortcuts")
+        mock_intf = xdp.get_mock_iface(dbus_con)
+
+        request = xdp.Request(dbus_con, globalshortcuts_intf)
         options = {
             "session_handle_token": "session_token0",
         }
@@ -147,7 +161,7 @@ class TestGlobalShortcuts:
 
         assert response.response == 0
 
-        session = Session.from_response(portal_mock.dbus_con, response)
+        session = xdp.Session.from_response(dbus_con, response)
 
         shortcuts = [
             (
@@ -159,7 +173,7 @@ class TestGlobalShortcuts:
             ),
         ]
 
-        request = portal_mock.create_request()
+        request = xdp.Request(dbus_con, globalshortcuts_intf)
         response = request.call(
             "BindShortcuts",
             session_handle=session.handle,
@@ -195,11 +209,10 @@ class TestGlobalShortcuts:
             assert shortcut_id == "binding1"
             deactivated_count += 1
 
-        gs_intf = portal_mock.get_dbus_interface()
-        gs_intf.connect_to_signal("Activated", cb_activated)
-        gs_intf.connect_to_signal("Deactivated", cb_deactivated)
+        globalshortcuts_intf.connect_to_signal("Activated", cb_activated)
+        globalshortcuts_intf.connect_to_signal("Deactivated", cb_deactivated)
 
-        portal_mock.mock_interface.Trigger(session.handle, "binding1")
+        mock_intf.Trigger(session.handle, "binding1")
 
         mainloop = GLib.MainLoop()
         GLib.timeout_add(2000, mainloop.quit)

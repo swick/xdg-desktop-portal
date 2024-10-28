@@ -296,6 +296,7 @@ if enable_pytest
 
   pytest_files = [
     'conftest.py',
+    'asan.suppression',
     '__init__.py',
     'test_clipboard.py',
     'test_email.py',
