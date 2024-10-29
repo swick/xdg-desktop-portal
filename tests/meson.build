@@ -285,6 +285,7 @@ if enable_pytest
     'test_inhibit.py',
     'test_inputcapture.py',
     'test_location.py',
+    'test_openuri.py',
     'test_remotedesktop.py',
     'test_screenshot.py',
     'test_trash.py',

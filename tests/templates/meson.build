@@ -1,6 +1,7 @@
 template_files = [
   '__init__.py',
   'account.py',
+  'appchooser.py',
   'background.py',
   'clipboard.py',
   'email.py',
@@ -8,6 +9,7 @@ template_files = [
   'globalshortcuts.py',
   'inhibit.py',
   'inputcapture.py',
+  'lockdown.py',
   'remotedesktop.py',
   'screenshot.py',
   'wallpaper.py',

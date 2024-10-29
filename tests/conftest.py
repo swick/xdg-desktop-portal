@@ -335,6 +335,20 @@ def umockdev():
 
 
 @pytest.fixture
+def xdg_data_home_files():
+    return {}
+
+
+@pytest.fixture(autouse=True)
+def ensure_xdg_data_home(create_test_dirs, xdg_data_home_files):
+    for name, content in xdg_data_home_files.items():
+        file_path = Path(os.environ["XDG_DATA_HOME"]) / name
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(str(file_path.absolute()), "w") as f:
+            f.write(content)
+
+
+@pytest.fixture
 def dbus_con(create_test_dbus):
     con = create_test_dbus.get_dbus(system_bus=False)
     assert con
