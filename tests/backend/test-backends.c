@@ -6,7 +6,6 @@
 #include "xdp-impl-dbus.h"
 
 #include "access.h"
-#include "appchooser.h"
 #include "background.h"
 #include "filechooser.h"
 #include "lockdown.h"
@@ -26,7 +25,6 @@ on_bus_acquired (GDBusConnection *connection,
                  gpointer         user_data)
 {
   access_init (connection, BACKEND_OBJECT_PATH);
-  appchooser_init (connection, BACKEND_OBJECT_PATH);
   file_chooser_init (connection, BACKEND_OBJECT_PATH);
   lockdown_init (connection, BACKEND_OBJECT_PATH);
   notification_init (connection, BACKEND_OBJECT_PATH);

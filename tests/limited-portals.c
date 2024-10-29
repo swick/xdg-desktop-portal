@@ -18,7 +18,6 @@
 #include "filechooser.h"
 #include "inhibit.h"
 #include "notification.h"
-#include "openuri.h"
 #include "print.h"
 #include "screenshot.h"
 #include "trash.h"

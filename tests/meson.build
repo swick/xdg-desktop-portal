@@ -17,7 +17,6 @@ endif
 subdir('dbs')
 subdir('portals')
 subdir('services')
-subdir('share')
 
 test_db = executable(
   'testdb',
@@ -64,7 +63,6 @@ test_backends = executable(
   'test-backends',
   'backend/test-backends.c',
   'backend/access.c',
-  'backend/appchooser.c',
   'backend/filechooser.c',
   'backend/lockdown.c',
   'backend/notification.c',
@@ -92,7 +90,6 @@ if have_libportal
     'camera.c',
     'filechooser.c',
     'notification.c',
-    'openuri.c',
     'print.c',
     'glib-backports.c',
   )
@@ -143,7 +140,6 @@ portal_tests = [
   'camera',
   'notification',
   'openfile',
-  'openuri',
   'prepareprint',
   'print',
   'savefile',

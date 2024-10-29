@@ -13,7 +13,6 @@
 #include "camera.h"
 #include "filechooser.h"
 #include "notification.h"
-#include "openuri.h"
 #include "print.h"
 #endif
 
@@ -422,7 +421,6 @@ DEFINE_TEST_EXISTS(file_chooser, FILE_CHOOSER, 4)
 DEFINE_TEST_EXISTS(game_mode, GAME_MODE, 4)
 DEFINE_TEST_EXISTS(network_monitor, NETWORK_MONITOR, 3)
 DEFINE_TEST_EXISTS(notification, NOTIFICATION, 2)
-DEFINE_TEST_EXISTS(open_uri, OPEN_URI, 5)
 DEFINE_TEST_EXISTS(print, PRINT, 3)
 DEFINE_TEST_EXISTS(proxy_resolver, PROXY_RESOLVER, 1)
 DEFINE_TEST_EXISTS(settings, SETTINGS, 2)
@@ -447,7 +445,6 @@ main (int argc, char **argv)
   g_test_add_func ("/portal/gamemode/exists", test_game_mode_exists);
   g_test_add_func ("/portal/networkmonitor/exists", test_network_monitor_exists);
   g_test_add_func ("/portal/notification/exists", test_notification_exists);
-  g_test_add_func ("/portal/openuri/exists", test_open_uri_exists);
   g_test_add_func ("/portal/print/exists", test_print_exists);
   g_test_add_func ("/portal/proxyresolver/exists", test_proxy_resolver_exists);
   g_test_add_func ("/portal/settings/exists", test_settings_exists);
@@ -501,16 +498,6 @@ main (int argc, char **argv)
   g_test_add_func ("/portal/camera/noaccess1", test_camera_no_access1);
   g_test_add_func ("/portal/camera/noaccess2", test_camera_no_access2);
   g_test_add_func ("/portal/camera/parallel", test_camera_parallel);
-
-  g_test_add_func ("/portal/openuri/http", test_open_uri_http);
-  g_test_add_func ("/portal/openuri/http2", test_open_uri_http2);
-  g_test_add_func ("/portal/openuri/file", test_open_uri_file);
-  g_test_add_func ("/portal/openuri/delay", test_open_uri_delay);
-  g_test_add_func ("/portal/openuri/close", test_open_uri_close);
-  g_test_add_func ("/portal/openuri/cancel", test_open_uri_cancel);
-  g_test_add_func ("/portal/openuri/lockdown", test_open_uri_lockdown);
-  g_test_add_func ("/portal/openuri/directory", test_open_directory);
-  g_test_add_func ("/portal/openuri/scheme-supported", test_scheme_supported);
 
   g_test_add_func ("/portal/notification/basic", test_notification_basic);
   g_test_add_func ("/portal/notification/buttons", test_notification_buttons);
