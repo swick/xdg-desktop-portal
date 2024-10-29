@@ -12,6 +12,7 @@ template_files = [
   'inputcapture.py',
   'lockdown.py',
   'notification.py',
+  'print.py',
   'remotedesktop.py',
   'screenshot.py',
   'wallpaper.py',
