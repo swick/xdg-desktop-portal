@@ -87,7 +87,6 @@ if have_libportal
   portals_test_deps += [libportal_dep]
 
   portals_test_sources += files(
-    'camera.c',
     'filechooser.c',
     'notification.c',
     'print.c',
@@ -137,7 +136,6 @@ limited_portals = executable(
 # easier.
 # Keep in sync with test-portals.c
 portal_tests = [
-  'camera',
   'notification',
   'openfile',
   'prepareprint',

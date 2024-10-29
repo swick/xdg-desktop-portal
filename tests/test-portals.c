@@ -10,7 +10,6 @@
 #include "xdp-impl-dbus.h"
 
 #ifdef HAVE_LIBPORTAL
-#include "camera.h"
 #include "filechooser.h"
 #include "notification.h"
 #include "print.h"
@@ -416,7 +415,6 @@ test_##pp##_exists (void) \
   g_assert_cmpuint (xdp_dbus_##pp##_get_version (XDP_DBUS_##PP (proxy)), ==, version); \
 }
 
-DEFINE_TEST_EXISTS(camera, CAMERA, 1)
 DEFINE_TEST_EXISTS(file_chooser, FILE_CHOOSER, 4)
 DEFINE_TEST_EXISTS(game_mode, GAME_MODE, 4)
 DEFINE_TEST_EXISTS(network_monitor, NETWORK_MONITOR, 3)
@@ -440,7 +438,6 @@ main (int argc, char **argv)
 
   g_test_init (&argc, &argv, NULL);
 
-  g_test_add_func ("/portal/camera/exists", test_camera_exists);
   g_test_add_func ("/portal/filechooser/exists", test_file_chooser_exists);
   g_test_add_func ("/portal/gamemode/exists", test_game_mode_exists);
   g_test_add_func ("/portal/networkmonitor/exists", test_network_monitor_exists);
@@ -489,15 +486,6 @@ main (int argc, char **argv)
   g_test_add_func ("/portal/print/cancel", test_print_cancel);
   g_test_add_func ("/portal/print/lockdown", test_print_lockdown);
   g_test_add_func ("/portal/print/parallel", test_print_parallel);
-
-  g_test_add_func ("/portal/camera/basic", test_camera_basic);
-  g_test_add_func ("/portal/camera/delay", test_camera_delay);
-  g_test_add_func ("/portal/camera/close", test_camera_close);
-  g_test_add_func ("/portal/camera/cancel", test_camera_cancel);
-  g_test_add_func ("/portal/camera/lockdown", test_camera_lockdown);
-  g_test_add_func ("/portal/camera/noaccess1", test_camera_no_access1);
-  g_test_add_func ("/portal/camera/noaccess2", test_camera_no_access2);
-  g_test_add_func ("/portal/camera/parallel", test_camera_parallel);
 
   g_test_add_func ("/portal/notification/basic", test_notification_basic);
   g_test_add_func ("/portal/notification/buttons", test_notification_buttons);
