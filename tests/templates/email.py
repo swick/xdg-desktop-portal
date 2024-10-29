@@ -44,14 +44,13 @@ def ComposeEmail(self, handle, app_id, parent_window, options, cb_success, cb_er
     try:
         logger.debug(f"ComposeEmail({handle}, {app_id}, {parent_window}, {options})")
 
-        response = Response(self.response, {})
-
         def closed_callback():
             response = Response(2, {})
             logger.debug(f"ComposeEmail Close() response {response}")
             cb_success(response.response, response.results)
 
         def reply_callback():
+            response = Response(self.response, {})
             logger.debug(f"ComposeEmail with response {response}")
             cb_success(response.response, response.results)
 
