@@ -11,6 +11,7 @@ template_files = [
   'inhibit.py',
   'inputcapture.py',
   'lockdown.py',
+  'notification.py',
   'remotedesktop.py',
   'screenshot.py',
   'wallpaper.py',
