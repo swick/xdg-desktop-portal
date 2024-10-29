@@ -1,5 +1,6 @@
 template_files = [
   '__init__.py',
+  'access.py',
   'account.py',
   'appchooser.py',
   'background.py',
