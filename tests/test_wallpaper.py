@@ -65,7 +65,7 @@ class TestWallpaper:
         wallpaper_intf = xdp.get_portal_iface(dbus_con, "Wallpaper")
         mock_intf = xdp.get_mock_iface(dbus_con)
 
-        fd, path = tempfile.mkstemp(prefix="wallpaper_mock", dir=Path.home())
+        fd, _ = tempfile.mkstemp(prefix="wallpaper_mock", dir=Path.home())
         os.write(fd, b"wallpaper_mock_file")
 
         show_preview = True
@@ -89,10 +89,12 @@ class TestWallpaper:
         _, args = method_calls[-1]
         assert args[1] == app_id
         assert args[2] == ""  # parent window
-        assert args[3].startswith("file:///")
         assert args[4]["show-preview"] == show_preview
 
-        with open(path) as file:
+        path = args[3]
+        assert path.startswith("file:///")
+
+        with open(path[7:]) as file:
             wallpaper_file_contents = file.read()
             assert wallpaper_file_contents == "wallpaper_mock_file"
 
