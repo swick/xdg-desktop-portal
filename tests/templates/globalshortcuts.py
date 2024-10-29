@@ -7,7 +7,6 @@ import dbus
 import dbus.service
 import time
 from dbusmock import MOCK_IFACE
-
 from gi.repository import GLib
 
 
@@ -52,34 +51,31 @@ def CreateSession(self, handle, session_handle, app_id, options, cb_success, cb_
         session = ImplSession(self, BUS_NAME, session_handle).export()
         self.sessions[session_handle] = session
 
-        response = Response(self.response, {"session_handle": session.handle})
+        def close_session():
+            session.close()
+            self.sessions[session_handle] = None
+
+        def closed_callback():
+            response = Response(2, {})
+            logger.debug(f"CreateSession Close() response {response}")
+            cb_success(response.response, response.results)
+
+        def reply_callback():
+            response = Response(self.response, {"session_handle": session.handle})
+            logger.debug(f"CreateSession with response {response}")
+            cb_success(response.response, response.results)
 
         request = ImplRequest(self, BUS_NAME, handle)
-
         if self.expect_close:
-
-            def closed_callback():
-                response = Response(2, {})
-                logger.debug(f"CreateSession Close() response {response}")
-                cb_success(response.response, response.results)
-
             request.export(closed_callback)
         else:
             request.export()
 
-            def reply():
-                logger.debug(f"CreateSession with response {response}")
-                cb_success(response.response, response.results)
-
             logger.debug(f"scheduling delay of {self.delay}")
-            GLib.timeout_add(self.delay, reply)
+            GLib.timeout_add(self.delay, reply_callback)
 
             if self.force_close > 0:
-
-                def force_close():
-                    session.close()
-
-                GLib.timeout_add(self.force_close, force_close)
+                GLib.timeout_add(self.force_close, close_session)
 
     except Exception as e:
         logger.critical(e)
