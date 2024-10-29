@@ -66,7 +66,6 @@ test_backends = executable(
   'backend/filechooser.c',
   'backend/lockdown.c',
   'backend/notification.c',
-  'backend/print.c',
   'backend/settings.c',
   'backend/xdp-request.c',
   'backend/xdp-session.c',
@@ -89,7 +88,6 @@ if have_libportal
   portals_test_sources += files(
     'filechooser.c',
     'notification.c',
-    'print.c',
     'glib-backports.c',
   )
 endif
@@ -138,8 +136,6 @@ limited_portals = executable(
 portal_tests = [
   'notification',
   'openfile',
-  'prepareprint',
-  'print',
   'savefile',
   'settings',
 ]

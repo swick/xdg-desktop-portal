@@ -18,7 +18,6 @@
 #include "filechooser.h"
 #include "inhibit.h"
 #include "notification.h"
-#include "print.h"
 #include "screenshot.h"
 #include "trash.h"
 #include "wallpaper.h"
@@ -439,8 +438,6 @@ test_##pp##_does_not_exist (void) \
 
 DEFINE_TEST_EXISTS(file_chooser, FILE_CHOOSER, 4)
 
-DEFINE_TEST_DOES_NOT_EXIST(print, PRINT)
-
 int
 main (int argc, char **argv)
 {
@@ -456,7 +453,6 @@ main (int argc, char **argv)
   g_test_init (&argc, &argv, NULL);
 
   g_test_add_func ("/limited/filechooser/exists", test_file_chooser_exists);
-  g_test_add_func ("/limited/print/does-not-exist", test_print_does_not_exist);
 
 #ifdef HAVE_LIBPORTAL
   g_test_add_func ("/limited/openfile/basic", test_open_file_basic);

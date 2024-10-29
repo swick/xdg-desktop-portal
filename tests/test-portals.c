@@ -12,7 +12,6 @@
 #ifdef HAVE_LIBPORTAL
 #include "filechooser.h"
 #include "notification.h"
-#include "print.h"
 #endif
 
 #include "utils.h"
@@ -419,7 +418,6 @@ DEFINE_TEST_EXISTS(file_chooser, FILE_CHOOSER, 4)
 DEFINE_TEST_EXISTS(game_mode, GAME_MODE, 4)
 DEFINE_TEST_EXISTS(network_monitor, NETWORK_MONITOR, 3)
 DEFINE_TEST_EXISTS(notification, NOTIFICATION, 2)
-DEFINE_TEST_EXISTS(print, PRINT, 3)
 DEFINE_TEST_EXISTS(proxy_resolver, PROXY_RESOLVER, 1)
 DEFINE_TEST_EXISTS(settings, SETTINGS, 2)
 DEFINE_TEST_EXISTS(realtime, REALTIME, 1)
@@ -442,7 +440,6 @@ main (int argc, char **argv)
   g_test_add_func ("/portal/gamemode/exists", test_game_mode_exists);
   g_test_add_func ("/portal/networkmonitor/exists", test_network_monitor_exists);
   g_test_add_func ("/portal/notification/exists", test_notification_exists);
-  g_test_add_func ("/portal/print/exists", test_print_exists);
   g_test_add_func ("/portal/proxyresolver/exists", test_proxy_resolver_exists);
   g_test_add_func ("/portal/settings/exists", test_settings_exists);
   g_test_add_func ("/portal/realtime/exists", test_realtime_exists);
@@ -471,21 +468,6 @@ main (int argc, char **argv)
   g_test_add_func ("/portal/savefile/filters", test_save_file_filters);
   g_test_add_func ("/portal/savefile/lockdown", test_save_file_lockdown);
   g_test_add_func ("/portal/savefile/parallel", test_save_file_parallel);
-
-  g_test_add_func ("/portal/prepareprint/basic", test_prepare_print_basic);
-  g_test_add_func ("/portal/prepareprint/delay", test_prepare_print_delay);
-  g_test_add_func ("/portal/prepareprint/close", test_prepare_print_close);
-  g_test_add_func ("/portal/prepareprint/cancel", test_prepare_print_cancel);
-  g_test_add_func ("/portal/prepareprint/lockdown", test_prepare_print_lockdown);
-  g_test_add_func ("/portal/prepareprint/results", test_prepare_print_results);
-  g_test_add_func ("/portal/prepareprint/parallel", test_prepare_print_parallel);
-
-  g_test_add_func ("/portal/print/basic", test_print_basic);
-  g_test_add_func ("/portal/print/delay", test_print_delay);
-  g_test_add_func ("/portal/print/close", test_print_close);
-  g_test_add_func ("/portal/print/cancel", test_print_cancel);
-  g_test_add_func ("/portal/print/lockdown", test_print_lockdown);
-  g_test_add_func ("/portal/print/parallel", test_print_parallel);
 
   g_test_add_func ("/portal/notification/basic", test_notification_basic);
   g_test_add_func ("/portal/notification/buttons", test_notification_buttons);

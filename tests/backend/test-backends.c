@@ -10,7 +10,6 @@
 #include "filechooser.h"
 #include "lockdown.h"
 #include "notification.h"
-#include "print.h"
 #include "settings.h"
 
 #include "src/glib-backports.h"
@@ -28,7 +27,6 @@ on_bus_acquired (GDBusConnection *connection,
   file_chooser_init (connection, BACKEND_OBJECT_PATH);
   lockdown_init (connection, BACKEND_OBJECT_PATH);
   notification_init (connection, BACKEND_OBJECT_PATH);
-  print_init (connection, BACKEND_OBJECT_PATH);
   settings_init (connection, BACKEND_OBJECT_PATH);
 }
 
