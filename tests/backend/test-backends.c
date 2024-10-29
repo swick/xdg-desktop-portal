@@ -9,7 +9,6 @@
 #include "appchooser.h"
 #include "background.h"
 #include "filechooser.h"
-#include "inhibit.h"
 #include "lockdown.h"
 #include "notification.h"
 #include "print.h"
@@ -29,7 +28,6 @@ on_bus_acquired (GDBusConnection *connection,
   access_init (connection, BACKEND_OBJECT_PATH);
   appchooser_init (connection, BACKEND_OBJECT_PATH);
   file_chooser_init (connection, BACKEND_OBJECT_PATH);
-  inhibit_init (connection, BACKEND_OBJECT_PATH);
   lockdown_init (connection, BACKEND_OBJECT_PATH);
   notification_init (connection, BACKEND_OBJECT_PATH);
   print_init (connection, BACKEND_OBJECT_PATH);

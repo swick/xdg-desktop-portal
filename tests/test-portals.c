@@ -12,7 +12,6 @@
 #ifdef HAVE_LIBPORTAL
 #include "camera.h"
 #include "filechooser.h"
-#include "inhibit.h"
 #include "notification.h"
 #include "openuri.h"
 #include "print.h"
@@ -421,7 +420,6 @@ test_##pp##_exists (void) \
 DEFINE_TEST_EXISTS(camera, CAMERA, 1)
 DEFINE_TEST_EXISTS(file_chooser, FILE_CHOOSER, 4)
 DEFINE_TEST_EXISTS(game_mode, GAME_MODE, 4)
-DEFINE_TEST_EXISTS(inhibit, INHIBIT, 3)
 DEFINE_TEST_EXISTS(network_monitor, NETWORK_MONITOR, 3)
 DEFINE_TEST_EXISTS(notification, NOTIFICATION, 2)
 DEFINE_TEST_EXISTS(open_uri, OPEN_URI, 5)
@@ -447,7 +445,6 @@ main (int argc, char **argv)
   g_test_add_func ("/portal/camera/exists", test_camera_exists);
   g_test_add_func ("/portal/filechooser/exists", test_file_chooser_exists);
   g_test_add_func ("/portal/gamemode/exists", test_game_mode_exists);
-  g_test_add_func ("/portal/inhibit/exists", test_inhibit_exists);
   g_test_add_func ("/portal/networkmonitor/exists", test_network_monitor_exists);
   g_test_add_func ("/portal/notification/exists", test_notification_exists);
   g_test_add_func ("/portal/openuri/exists", test_open_uri_exists);
@@ -504,14 +501,6 @@ main (int argc, char **argv)
   g_test_add_func ("/portal/camera/noaccess1", test_camera_no_access1);
   g_test_add_func ("/portal/camera/noaccess2", test_camera_no_access2);
   g_test_add_func ("/portal/camera/parallel", test_camera_parallel);
-
-  g_test_add_func ("/portal/inhibit/basic", test_inhibit_basic);
-  g_test_add_func ("/portal/inhibit/delay", test_inhibit_delay);
-  g_test_add_func ("/portal/inhibit/close", test_inhibit_close);
-  g_test_add_func ("/portal/inhibit/cancel", test_inhibit_cancel);
-  g_test_add_func ("/portal/inhibit/parallel", test_inhibit_parallel);
-  g_test_add_func ("/portal/inhibit/permissions", test_inhibit_permissions);
-  g_test_add_func ("/portal/inhibit/monitor", test_inhibit_monitor);
 
   g_test_add_func ("/portal/openuri/http", test_open_uri_http);
   g_test_add_func ("/portal/openuri/http2", test_open_uri_http2);
