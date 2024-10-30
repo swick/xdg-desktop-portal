@@ -305,6 +305,7 @@ class Request(Closable):
             *list(kwargs.values()),
             reply_handler=reply_cb,
             error_handler=error_cb,
+            byte_arrays=True,
         )
 
         self._mainloop.run()

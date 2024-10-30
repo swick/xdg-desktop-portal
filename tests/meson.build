@@ -271,6 +271,7 @@ if enable_pytest
     'test_camera.py',
     'test_clipboard.py',
     'test_email.py',
+    'test_filechooser.py',
     'test_globalshortcuts.py',
     'test_inhibit.py',
     'test_inputcapture.py',

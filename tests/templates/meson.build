@@ -6,6 +6,7 @@ template_files = [
   'background.py',
   'clipboard.py',
   'email.py',
+  'filechooser.py',
   'geoclue2.py',
   'globalshortcuts.py',
   'inhibit.py',
