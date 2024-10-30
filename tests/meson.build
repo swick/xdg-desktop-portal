@@ -109,32 +109,11 @@ test_portals = executable(
   install_dir: installed_tests_dir,
 )
 
-limited_portals = executable(
-  'limited-portals',
-  'limited-portals.c',
-  'utils.c',
-  portals_test_sources,
-  impl_built_sources,
-  permission_store_built_sources,
-  portal_built_sources,
-  xdp_utils_sources,
-  dependencies: [common_deps, portals_test_deps, xdp_utils_deps],
-  include_directories: [common_includes, xdp_utils_includes],
-  c_args: [
-    '-DXDG_DP_BUILDDIR="src"',
-    '-DXDG_PS_BUILDDIR="document-portal"',
-  ],
-  install: enable_installed_tests,
-  install_dir: installed_tests_dir,
-)
-
 # Split the portal tests into one test per portal, this makes debugging a lot
 # easier.
 # Keep in sync with test-portals.c
 portal_tests = [
   'notification',
-  'openfile',
-  'savefile',
 ]
 
 test_env = env_tests
@@ -146,28 +125,6 @@ foreach p : portal_tests
       args: ['--verbose', '--keep-going', '--tap', '-p', '/portal/@0@'.format(p)],
       depends: [test_backends, test_portals],
       env: test_env,
-      protocol: test_protocol,
-      suite: 'portals',
-    )
-endforeach
-
-# Split the portal tests into one test per portal, this makes debugging a lot
-# easier.
-# Keep in sync with test-portals.c
-portal_limited = [
-  'openfile',
-  'savefile',
-]
-
-limited_env = env_tests
-limited_env.set('XDG_CURRENT_DESKTOP', 'limited')
-foreach p : portal_limited
-    test(
-      'limited-portals-@0@'.format(p),
-      limited_portals,
-      args: ['--verbose', '--keep-going', '--tap', '-p', '/limited/@0@'.format(p)],
-      depends: [test_backends, limited_portals],
-      env: limited_env,
       protocol: test_protocol,
       suite: 'portals',
     )
@@ -348,20 +305,6 @@ if enable_installed_tests
       configure_file(
         input: 'template.test.in',
         output: 'test-portals-@0@.test'.format(p),
-        configuration: data,
-        install: true,
-        install_dir: installed_tests_data_dir,
-      )
-  endforeach
-
-  foreach p : portal_limited
-      data = configuration_data()
-      data.set('installed_testdir', installed_tests_dir)
-      data.set('libdir', libdir)
-      data.set('exec', 'limited-portals -p /limited/@0@'.format(p))
-      configure_file(
-        input: 'template.test.in',
-        output: 'test-limited-@0@.test'.format(p),
         configuration: data,
         install: true,
         install_dir: installed_tests_data_dir,
