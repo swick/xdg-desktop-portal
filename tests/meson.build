@@ -64,7 +64,6 @@ test_backends = executable(
   'backend/test-backends.c',
   'backend/access.c',
   'backend/lockdown.c',
-  'backend/notification.c',
   'backend/settings.c',
   'backend/xdp-request.c',
   'backend/xdp-session.c',
@@ -85,7 +84,6 @@ if have_libportal
   portals_test_deps += [libportal_dep]
 
   portals_test_sources += files(
-    'notification.c',
     'glib-backports.c',
   )
 endif
@@ -113,7 +111,6 @@ test_portals = executable(
 # easier.
 # Keep in sync with test-portals.c
 portal_tests = [
-  'notification',
 ]
 
 test_env = env_tests

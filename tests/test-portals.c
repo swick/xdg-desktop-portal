@@ -9,10 +9,6 @@
 #include "xdp-utils.h"
 #include "xdp-impl-dbus.h"
 
-#ifdef HAVE_LIBPORTAL
-#include "notification.h"
-#endif
-
 #include "utils.h"
 
 /* required while we support meson + autotools. Autotools builds everything in
@@ -415,7 +411,6 @@ test_##pp##_exists (void) \
 
 DEFINE_TEST_EXISTS(game_mode, GAME_MODE, 4)
 DEFINE_TEST_EXISTS(network_monitor, NETWORK_MONITOR, 3)
-DEFINE_TEST_EXISTS(notification, NOTIFICATION, 2)
 DEFINE_TEST_EXISTS(proxy_resolver, PROXY_RESOLVER, 1)
 DEFINE_TEST_EXISTS(realtime, REALTIME, 1)
 
@@ -435,23 +430,8 @@ main (int argc, char **argv)
 
   g_test_add_func ("/portal/gamemode/exists", test_game_mode_exists);
   g_test_add_func ("/portal/networkmonitor/exists", test_network_monitor_exists);
-  g_test_add_func ("/portal/notification/exists", test_notification_exists);
   g_test_add_func ("/portal/proxyresolver/exists", test_proxy_resolver_exists);
   g_test_add_func ("/portal/realtime/exists", test_realtime_exists);
-
-#ifdef HAVE_LIBPORTAL
-  g_test_add_func ("/portal/notification/basic", test_notification_basic);
-  g_test_add_func ("/portal/notification/buttons", test_notification_buttons);
-  g_test_add_func ("/portal/notification/markup-body", test_notification_markup_body);
-  g_test_add_func ("/portal/notification/bad-arg", test_notification_bad_arg);
-  g_test_add_func ("/portal/notification/bad-priority", test_notification_bad_priority);
-  g_test_add_func ("/portal/notification/bad-button", test_notification_bad_button);
-  g_test_add_func ("/portal/notification/icon", test_notification_icon);
-  g_test_add_func ("/portal/notification/sound", test_notification_sound);
-  g_test_add_func ("/portal/notification/display-hint", test_notification_display_hint);
-  g_test_add_func ("/portal/notification/category", test_notification_category);
-  g_test_add_func ("/portal/notification/supported-properties", test_notification_supported_properties);
-#endif
 
   global_setup ();
 
