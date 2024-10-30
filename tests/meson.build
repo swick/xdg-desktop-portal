@@ -19,15 +19,15 @@ subdir('portals')
 subdir('services')
 
 test_db = executable(
-  'testdb',
-  ['testdb.c'] + db_sources,
+  'test-permission-db',
+  ['test-permission-db.c'] + db_sources,
   dependencies: [common_deps],
   include_directories: [common_includes],
   install: enable_installed_tests,
   install_dir: installed_tests_dir,
 )
 test(
-  'testdb',
+  'test-permission-db',
   test_db,
   env: env_tests,
   is_parallel: false,
@@ -277,7 +277,7 @@ if enable_installed_tests
   )
 
   testfiles = [
-    'testdb',
+    'test-permission-db.c',
     'test-doc-portal',
     'test-document-fuse.sh',
     'test-permission-store',
