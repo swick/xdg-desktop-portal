@@ -419,7 +419,6 @@ DEFINE_TEST_EXISTS(game_mode, GAME_MODE, 4)
 DEFINE_TEST_EXISTS(network_monitor, NETWORK_MONITOR, 3)
 DEFINE_TEST_EXISTS(notification, NOTIFICATION, 2)
 DEFINE_TEST_EXISTS(proxy_resolver, PROXY_RESOLVER, 1)
-DEFINE_TEST_EXISTS(settings, SETTINGS, 2)
 DEFINE_TEST_EXISTS(realtime, REALTIME, 1)
 
 int
@@ -441,7 +440,6 @@ main (int argc, char **argv)
   g_test_add_func ("/portal/networkmonitor/exists", test_network_monitor_exists);
   g_test_add_func ("/portal/notification/exists", test_notification_exists);
   g_test_add_func ("/portal/proxyresolver/exists", test_proxy_resolver_exists);
-  g_test_add_func ("/portal/settings/exists", test_settings_exists);
   g_test_add_func ("/portal/realtime/exists", test_realtime_exists);
 
 #ifdef HAVE_LIBPORTAL
