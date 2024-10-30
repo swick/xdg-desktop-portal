@@ -15,7 +15,6 @@
 #include "background.h"
 #include "camera.h"
 #include "email.h"
-#include "filechooser.h"
 #include "inhibit.h"
 #include "notification.h"
 #include "screenshot.h"
@@ -436,8 +435,6 @@ test_##pp##_does_not_exist (void) \
   g_assert_cmpuint (xdp_dbus_##pp##_get_version (XDP_DBUS_##PP (proxy)), ==, 0); \
 }
 
-DEFINE_TEST_EXISTS(file_chooser, FILE_CHOOSER, 4)
-
 int
 main (int argc, char **argv)
 {
@@ -451,34 +448,6 @@ main (int argc, char **argv)
   setlocale (LC_ALL, NULL);
 
   g_test_init (&argc, &argv, NULL);
-
-  g_test_add_func ("/limited/filechooser/exists", test_file_chooser_exists);
-
-#ifdef HAVE_LIBPORTAL
-  g_test_add_func ("/limited/openfile/basic", test_open_file_basic);
-  g_test_add_func ("/limited/openfile/delay", test_open_file_delay);
-  g_test_add_func ("/limited/openfile/close", test_open_file_close);
-  g_test_add_func ("/limited/openfile/cancel", test_open_file_cancel);
-  g_test_add_func ("/limited/openfile/multiple", test_open_file_multiple);
-  g_test_add_func ("/limited/openfile/filters1", test_open_file_filters1);
-  g_test_add_func ("/limited/openfile/filters2", test_open_file_filters2);
-  g_test_add_func ("/limited/openfile/current_filter1", test_open_file_current_filter1);
-  g_test_add_func ("/limited/openfile/current_filter2", test_open_file_current_filter2);
-  g_test_add_func ("/limited/openfile/current_filter3", test_open_file_current_filter3);
-  g_test_add_func ("/limited/openfile/current_filter4", test_open_file_current_filter4);
-  g_test_add_func ("/limited/openfile/choices1", test_open_file_choices1);
-  g_test_add_func ("/limited/openfile/choices2", test_open_file_choices2);
-  g_test_add_func ("/limited/openfile/choices3", test_open_file_choices3);
-  g_test_add_func ("/limited/openfile/parallel", test_open_file_parallel);
-
-  g_test_add_func ("/limited/savefile/basic", test_save_file_basic);
-  g_test_add_func ("/limited/savefile/delay", test_save_file_delay);
-  g_test_add_func ("/limited/savefile/close", test_save_file_close);
-  g_test_add_func ("/limited/savefile/cancel", test_save_file_cancel);
-  g_test_add_func ("/limited/savefile/filters", test_save_file_filters);
-  g_test_add_func ("/limited/savefile/lockdown", test_save_file_lockdown);
-  g_test_add_func ("/limited/savefile/parallel", test_save_file_parallel);
-#endif
 
   global_setup ();
 

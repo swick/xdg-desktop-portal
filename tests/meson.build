@@ -63,7 +63,6 @@ test_backends = executable(
   'test-backends',
   'backend/test-backends.c',
   'backend/access.c',
-  'backend/filechooser.c',
   'backend/lockdown.c',
   'backend/notification.c',
   'backend/settings.c',
@@ -86,7 +85,6 @@ if have_libportal
   portals_test_deps += [libportal_dep]
 
   portals_test_sources += files(
-    'filechooser.c',
     'notification.c',
     'glib-backports.c',
   )

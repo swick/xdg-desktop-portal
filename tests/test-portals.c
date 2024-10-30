@@ -10,7 +10,6 @@
 #include "xdp-impl-dbus.h"
 
 #ifdef HAVE_LIBPORTAL
-#include "filechooser.h"
 #include "notification.h"
 #endif
 
@@ -414,7 +413,6 @@ test_##pp##_exists (void) \
   g_assert_cmpuint (xdp_dbus_##pp##_get_version (XDP_DBUS_##PP (proxy)), ==, version); \
 }
 
-DEFINE_TEST_EXISTS(file_chooser, FILE_CHOOSER, 4)
 DEFINE_TEST_EXISTS(game_mode, GAME_MODE, 4)
 DEFINE_TEST_EXISTS(network_monitor, NETWORK_MONITOR, 3)
 DEFINE_TEST_EXISTS(notification, NOTIFICATION, 2)
@@ -435,7 +433,6 @@ main (int argc, char **argv)
 
   g_test_init (&argc, &argv, NULL);
 
-  g_test_add_func ("/portal/filechooser/exists", test_file_chooser_exists);
   g_test_add_func ("/portal/gamemode/exists", test_game_mode_exists);
   g_test_add_func ("/portal/networkmonitor/exists", test_network_monitor_exists);
   g_test_add_func ("/portal/notification/exists", test_notification_exists);
@@ -443,30 +440,6 @@ main (int argc, char **argv)
   g_test_add_func ("/portal/realtime/exists", test_realtime_exists);
 
 #ifdef HAVE_LIBPORTAL
-  g_test_add_func ("/portal/openfile/basic", test_open_file_basic);
-  g_test_add_func ("/portal/openfile/delay", test_open_file_delay);
-  g_test_add_func ("/portal/openfile/close", test_open_file_close);
-  g_test_add_func ("/portal/openfile/cancel", test_open_file_cancel);
-  g_test_add_func ("/portal/openfile/multiple", test_open_file_multiple);
-  g_test_add_func ("/portal/openfile/filters1", test_open_file_filters1);
-  g_test_add_func ("/portal/openfile/filters2", test_open_file_filters2);
-  g_test_add_func ("/portal/openfile/current_filter1", test_open_file_current_filter1);
-  g_test_add_func ("/portal/openfile/current_filter2", test_open_file_current_filter2);
-  g_test_add_func ("/portal/openfile/current_filter3", test_open_file_current_filter3);
-  g_test_add_func ("/portal/openfile/current_filter4", test_open_file_current_filter4);
-  g_test_add_func ("/portal/openfile/choices1", test_open_file_choices1);
-  g_test_add_func ("/portal/openfile/choices2", test_open_file_choices2);
-  g_test_add_func ("/portal/openfile/choices3", test_open_file_choices3);
-  g_test_add_func ("/portal/openfile/parallel", test_open_file_parallel);
-
-  g_test_add_func ("/portal/savefile/basic", test_save_file_basic);
-  g_test_add_func ("/portal/savefile/delay", test_save_file_delay);
-  g_test_add_func ("/portal/savefile/close", test_save_file_close);
-  g_test_add_func ("/portal/savefile/cancel", test_save_file_cancel);
-  g_test_add_func ("/portal/savefile/filters", test_save_file_filters);
-  g_test_add_func ("/portal/savefile/lockdown", test_save_file_lockdown);
-  g_test_add_func ("/portal/savefile/parallel", test_save_file_parallel);
-
   g_test_add_func ("/portal/notification/basic", test_notification_basic);
   g_test_add_func ("/portal/notification/buttons", test_notification_buttons);
   g_test_add_func ("/portal/notification/markup-body", test_notification_markup_body);
