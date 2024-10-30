@@ -14,6 +14,7 @@ template_files = [
   'notification.py',
   'print.py',
   'remotedesktop.py',
+  'settings.py',
   'screenshot.py',
   'wallpaper.py',
 ]
