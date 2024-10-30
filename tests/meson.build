@@ -57,76 +57,6 @@ test(
   protocol: test_protocol,
 )
 
-# We build this in the tests/ subdirectory so that it can be accessed
-# via G_TEST_BUILT
-test_backends = executable(
-  'test-backends',
-  'backend/test-backends.c',
-  'backend/access.c',
-  'backend/lockdown.c',
-  'backend/settings.c',
-  'backend/xdp-request.c',
-  'backend/xdp-session.c',
-  'glib-backports.c',
-  document_portal_built_sources,
-  document_portal_built_sources,
-  impl_built_sources,
-  dependencies: [common_deps],
-  include_directories: [common_includes, src_includes],
-  install: enable_installed_tests,
-  install_dir: installed_tests_dir,
-)
-
-portals_test_deps = []
-portals_test_sources = files()
-
-if have_libportal
-  portals_test_deps += [libportal_dep]
-
-  portals_test_sources += files(
-    'glib-backports.c',
-  )
-endif
-
-test_portals = executable(
-  'test-portals',
-  'test-portals.c',
-  'utils.c',
-  portals_test_sources,
-  impl_built_sources,
-  permission_store_built_sources,
-  portal_built_sources,
-  xdp_utils_sources,
-  dependencies: [common_deps, portals_test_deps, xdp_utils_deps],
-  include_directories: [common_includes, xdp_utils_includes],
-  c_args: [
-    '-DXDG_DP_BUILDDIR="src"',
-    '-DXDG_PS_BUILDDIR="document-portal"',
-  ],
-  install: enable_installed_tests,
-  install_dir: installed_tests_dir,
-)
-
-# Split the portal tests into one test per portal, this makes debugging a lot
-# easier.
-# Keep in sync with test-portals.c
-portal_tests = [
-]
-
-test_env = env_tests
-test_env.set('XDG_CURRENT_DESKTOP', 'test')
-foreach p : portal_tests
-    test(
-      'test-portals-@0@'.format(p),
-      test_portals,
-      args: ['--verbose', '--keep-going', '--tap', '-p', '/portal/@0@'.format(p)],
-      depends: [test_backends, test_portals],
-      env: test_env,
-      protocol: test_protocol,
-      suite: 'portals',
-    )
-endforeach
-
 if enable_installed_tests
   install_data(
     'session.conf.in',
@@ -293,20 +223,4 @@ if enable_installed_tests
         install_dir: installed_tests_data_dir,
       )
   endforeach
-
-  foreach p : portal_tests
-      data = configuration_data()
-      data.set('installed_testdir', installed_tests_dir)
-      data.set('libdir', libdir)
-      data.set('exec', 'test-portals -p /portal/@0@'.format(p))
-      configure_file(
-        input: 'template.test.in',
-        output: 'test-portals-@0@.test'.format(p),
-        configuration: data,
-        install: true,
-        install_dir: installed_tests_data_dir,
-      )
-  endforeach
 endif
-
-meson.add_devenv(test_env)
