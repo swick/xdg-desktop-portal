@@ -15,7 +15,7 @@ else
 endif
 
 subdir('dbs')
-subdir('portals')
+subdir('test-portal-conf')
 subdir('services')
 
 test_db = executable(

@@ -7,8 +7,8 @@
 #   XDP_DBUS_MONITOR: if set, starts dbus_monitor on the custom bus, useful
 #                     for debugging
 #
-# Make sure the required portals are listed in tests/portals/test.portal and you
-# have a dbusmock template for the impl.portal of your portal in
+# Make sure the required portals are listed in test-portal-conf/meson.build
+# and you have a dbusmock template for the impl.portal of your portal in
 # tests/templates. See the dbusmock documentation for details on those
 # templates.
 
@@ -226,7 +226,7 @@ def xdp_env(umockdev, app_id, xdp_overwrite_env):
     if umockdev:
         env["UMOCKDEV_DIR"] = umockdev.get_root_dir()
 
-    portal_dir = Path(os.getenv("G_TEST_BUILDDIR")) / "portals" / "test"
+    portal_dir = Path(os.getenv("G_TEST_BUILDDIR")) / "test-portal-conf"
     if not portal_dir.exists():
         raise FileNotFoundError(f"{portal_dir} does not exist")
     env["XDG_DESKTOP_PORTAL_DIR"] = portal_dir
