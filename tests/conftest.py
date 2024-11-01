@@ -221,7 +221,9 @@ def xdp_env(umockdev, app_id, xdp_overwrite_env):
     env = os.environ.copy()
     env["G_DEBUG"] = "fatal-criticals"
     env["XDG_CURRENT_DESKTOP"] = "test"
-    env["XDG_DESKTOP_PORTAL_TEST_APP_ID"] = app_id
+
+    if app_id:
+        env["XDG_DESKTOP_PORTAL_TEST_APP_ID"] = app_id
 
     if umockdev:
         env["UMOCKDEV_DIR"] = umockdev.get_root_dir()
@@ -322,6 +324,42 @@ def xdg_permission_store(dbus_con, xdg_permission_store_path, xdp_env):
     # The permission store does not shut down cleanly currently
     # returncode = permission_store.wait()
     # assert returncode == 0
+
+
+@pytest.fixture
+def xdg_document_portal_path():
+    return (
+        Path(os.getenv("G_TEST_BUILDDIR"))
+        / ".."
+        / "document-portal"
+        / "xdg-document-portal"
+    )
+
+
+@pytest.fixture
+def xdg_document_portal(dbus_con, xdg_document_portal_path, xdp_env):
+    if not xdg_document_portal_path.exists():
+        raise FileNotFoundError(f"{xdg_document_portal_path} does not exist")
+
+    # FUSE and LD_PRELOAD don't like each other. Not sure what exactly is going
+    # wrong but it usually just results in a weird hang that needs SIGKILL
+    env = xdp_env.copy()
+    del env["LD_PRELOAD"]
+
+    document_portal = subprocess.Popen([xdg_document_portal_path], env=env)
+
+    for _ in range(50):
+        if dbus_con.name_has_owner("org.freedesktop.portal.Documents"):
+            break
+        time.sleep(0.1)
+    else:
+        assert False, "Timeout while waiting for xdg-document-portal to claim the bus"
+
+    yield document_portal
+
+    document_portal.send_signal(signal.SIGHUP)
+    returncode = document_portal.wait()
+    assert returncode == 0
 
 
 @pytest.fixture
