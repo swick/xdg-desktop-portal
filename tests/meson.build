@@ -57,25 +57,6 @@ test(
   protocol: test_protocol,
 )
 
-test_permission_store = executable(
-  'test-permission-store',
-  'test-permission-store.c',
-  'utils.c',
-  permission_store_built_sources,
-  xdp_utils_sources,
-  dependencies: [common_deps, xdp_utils_deps],
-  include_directories: [common_includes, xdp_utils_includes],
-  install: enable_installed_tests,
-  install_dir: installed_tests_dir,
-)
-test(
-  'test-permission-store',
-  test_permission_store,
-  env: env_tests,
-  is_parallel: false,
-  protocol: test_protocol,
-)
-
 test_xdp_utils = executable(
   'test-xdp-utils',
   'test-xdp-utils.c',
@@ -205,7 +186,6 @@ if enable_installed_tests
     'test-permission-db.c',
     'test-doc-portal',
     'test-document-fuse.sh',
-    'test-permission-store',
     'test-xdp-utils',
   ]
   foreach tf : testfiles
