@@ -57,15 +57,6 @@ test(
   protocol: test_protocol,
 )
 
-if enable_installed_tests
-  install_data(
-    'session.conf.in',
-    'test-document-fuse.sh',
-    'test-document-fuse.py',
-    install_dir: installed_tests_dir
-  )
-endif
-
 test_permission_store = executable(
   'test-permission-store',
   'test-permission-store.c',
@@ -152,7 +143,7 @@ if enable_pytest
     'test_background.py',
     'test_camera.py',
     'test_clipboard.py',
-    'test_document_fuse.py'
+    'test_document_fuse.py',
     'test_email.py',
     'test_filechooser.py',
     'test_globalshortcuts.py',
@@ -202,6 +193,11 @@ if enable_installed_tests
     doc_portal_service_file,
     permission_portal_service_file,
     install_dir: installed_tests_dir / 'services',
+  )
+
+  install_data(
+    'session.conf.in',
+    install_dir: installed_tests_dir
   )
 
   testfiles = [
