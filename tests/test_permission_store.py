@@ -239,7 +239,6 @@ class TestPermissionStore:
 
         xdp.wait_for(lambda: changed_count >= 2)
 
-    @pytest.mark.skip(reason="makes further tests fail")
     def test_lookup(self, portals, dbus_con):
         permission_store_intf = PermissionStore()
 
@@ -288,7 +287,6 @@ class TestPermissionStore:
         assert perms_out == {}
         assert data_out == data
 
-    @pytest.mark.skip(reason="makes further tests fail")
     def test_create(self, portals, dbus_con):
         permission_store_intf = PermissionStore()
 

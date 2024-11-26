@@ -3,3 +3,4 @@
 * Document pytest fixture
 * Document xdp functions
 * Allow installed tests
+* pytest -n 1 breaks test_permission_store.py test_document_fuse.py
