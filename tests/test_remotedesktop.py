@@ -7,7 +7,6 @@ import tests as xdp
 import dbus
 import pytest
 import socket
-from gi.repository import GLib
 
 
 @pytest.fixture
@@ -43,12 +42,7 @@ class TestRemoteDesktop:
         # assert args[2] == ""  # appid, not necessary empty
 
         session.close()
-
-        mainloop = GLib.MainLoop()
-        GLib.timeout_add(2000, mainloop.quit)
-        mainloop.run()
-
-        assert session.closed
+        xdp.wait_for(lambda: session.closed)
 
     @pytest.mark.parametrize(
         "template_params", ({"remotedesktop": {"force-close": 500}},)
@@ -77,12 +71,7 @@ class TestRemoteDesktop:
         # assert args[2] == ""  # appid, not necessary empty
 
         # Now expect the backend to close it
-
-        mainloop = GLib.MainLoop()
-        GLib.timeout_add(2000, mainloop.quit)
-        mainloop.run()
-
-        assert session.closed
+        xdp.wait_for(lambda: session.closed)
 
     def test_remote_desktop_connect_to_eis(self, portals, dbus_con):
         remotedesktop_intf = xdp.get_portal_iface(dbus_con, "RemoteDesktop")

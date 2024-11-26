@@ -1,5 +1,3 @@
 * get logging from harness, mocking templates and DUTs (x-d-p, document portal, permission store)
 * make debugging DUTs easier
-* identify racy tests (add_timeout ... check) and replace with "while not condition: timeout"
-* create glib dbus interface classes when python-dbus doesn't work
 

@@ -482,14 +482,8 @@ class TestInputCapture:
             assert session_handle == session_handle
 
         inputcapture_intf.connect_to_signal("Disabled", cb_disabled)
-
         self.enable(dbus_con)
-
-        mainloop = GLib.MainLoop()
-        GLib.timeout_add(500, mainloop.quit)
-        mainloop.run()
-
-        assert disabled_signal_received
+        xdp.wait_for(lambda: disabled_signal_received)
 
     @pytest.mark.parametrize(
         "template_params",
@@ -557,21 +551,11 @@ class TestInputCapture:
 
         self.enable(dbus_con)
 
-        mainloop = GLib.MainLoop()
-        GLib.timeout_add(500, mainloop.quit)
-        mainloop.run()
-
-        assert activated_signal_received
-        assert deactivated_signal_received
+        xdp.wait_for(lambda: activated_signal_received and deactivated_signal_received)
         assert not disabled_signal_received
 
         # Disabling should not trigger the signal
         self.disable(dbus_con)
-
-        mainloop = GLib.MainLoop()
-        GLib.timeout_add(500, mainloop.quit)
-        mainloop.run()
-
         assert not disabled_signal_received
 
     @pytest.mark.parametrize(
@@ -627,11 +611,7 @@ class TestInputCapture:
 
         self.enable(dbus_con)
 
-        mainloop = GLib.MainLoop()
-        GLib.timeout_add(300, mainloop.quit)
-        mainloop.run()
-
-        assert activated_signal_received
+        xdp.wait_for(lambda: activated_signal_received)
         assert activation_id is not None
         assert not deactivated_signal_received
         assert not disabled_signal_received

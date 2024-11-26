@@ -7,7 +7,6 @@ import tests as xdp
 import dbus
 import pytest
 import time
-from gi.repository import GLib
 
 
 @pytest.fixture
@@ -43,12 +42,7 @@ class TestGlobalShortcuts:
         assert args[2] == app_id
 
         session.close()
-
-        mainloop = GLib.MainLoop()
-        GLib.timeout_add(2000, mainloop.quit)
-        mainloop.run()
-
-        assert session.closed
+        xdp.wait_for(lambda: session.closed)
 
     @pytest.mark.parametrize(
         "template_params", ({"globalshortcuts": {"force-close": 500}},)
@@ -79,12 +73,7 @@ class TestGlobalShortcuts:
         assert args[2] == app_id
 
         # Now expect the backend to close it
-
-        mainloop = GLib.MainLoop()
-        GLib.timeout_add(2000, mainloop.quit)
-        mainloop.run()
-
-        assert session.closed
+        xdp.wait_for(lambda: session.closed)
 
     def test_global_shortcuts_bind_list_shortcuts(self, portals, dbus_con):
         globalshortcuts_intf = xdp.get_portal_iface(dbus_con, "GlobalShortcuts")
@@ -139,12 +128,7 @@ class TestGlobalShortcuts:
         assert len(list(response.results["shortcuts"])) == len(list(shortcuts))
 
         session.close()
-
-        mainloop = GLib.MainLoop()
-        GLib.timeout_add(2000, mainloop.quit)
-        mainloop.run()
-
-        assert session.closed
+        xdp.wait_for(lambda: session.closed)
 
     def test_global_shortcuts_trigger(self, portals, dbus_con):
         globalshortcuts_intf = xdp.get_portal_iface(dbus_con, "GlobalShortcuts")
@@ -214,17 +198,8 @@ class TestGlobalShortcuts:
 
         mock_intf.Trigger(session.handle, "binding1")
 
-        mainloop = GLib.MainLoop()
-        GLib.timeout_add(2000, mainloop.quit)
-        mainloop.run()
-
-        assert activated_count == 1
-        assert deactivated_count == 1
+        xdp.wait_for(lambda: activated_count == 1 and deactivated_count == 1)
+        assert not session.closed
 
         session.close()
-
-        mainloop = GLib.MainLoop()
-        GLib.timeout_add(2000, mainloop.quit)
-        mainloop.run()
-
-        assert session.closed
+        xdp.wait_for(lambda: session.closed)

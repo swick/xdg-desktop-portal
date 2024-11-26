@@ -4,7 +4,6 @@ import tests as xdp
 
 import pytest
 import dbus
-from gi.repository import GLib
 
 
 @pytest.fixture
@@ -36,8 +35,7 @@ class TestLocation:
         location_intf = xdp.get_portal_iface(dbus_con, "Location")
         geoclue_mock_intf = self.get_geoclue_mock(dbus_con_sys)
 
-        mainloop = GLib.MainLoop()
-        GLib.timeout_add(2000, mainloop.quit)
+        location_updated = False
         updated_count = 0
 
         session = xdp.Session(
@@ -46,7 +44,7 @@ class TestLocation:
         )
 
         def cb_location_updated(session_handle, location):
-            nonlocal mainloop
+            nonlocal location_updated
             nonlocal updated_count
 
             if updated_count == 0:
@@ -59,7 +57,7 @@ class TestLocation:
                 assert location["Accuracy"] == 3
 
             updated_count += 1
-            mainloop.quit()
+            location_updated = True
 
         location_intf.connect_to_signal("LocationUpdated", cb_location_updated)
 
@@ -73,7 +71,8 @@ class TestLocation:
 
         assert start_session_response.response == 0
 
-        mainloop.run()
+        xdp.wait_for(lambda: location_updated)
+        location_updated = False
 
         assert updated_count == 1
 
@@ -85,7 +84,8 @@ class TestLocation:
             }
         )
 
-        mainloop.run()
+        xdp.wait_for(lambda: location_updated)
+        location_updated = False
 
         assert updated_count == 2
 

@@ -27,6 +27,19 @@ ASV = Dict[str, Any]
 logger = logging.getLogger("tests")
 
 
+def wait(ms):
+    mainloop = GLib.MainLoop()
+    GLib.timeout_add(ms, mainloop.quit)
+    mainloop.run()
+
+
+def wait_for(fn):
+    mainloop = GLib.MainLoop()
+    while not fn():
+        GLib.timeout_add(50, mainloop.quit)
+        mainloop.run()
+
+
 def get_permission_store_iface(dbus_con):
     obj = dbus_con.get_object(
         "org.freedesktop.impl.portal.PermissionStore",

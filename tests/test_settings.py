@@ -6,7 +6,6 @@ import tests as xdp
 
 import dbus
 import pytest
-from gi.repository import GLib
 
 
 SETTINGS_DATA = {
@@ -103,8 +102,7 @@ class TestSettings:
     def test_settings_changed(self, portals, dbus_con):
         settings_intf = xdp.get_portal_iface(dbus_con, "Settings")
         mock_intf = xdp.get_mock_iface(dbus_con)
-
-        mainloop = GLib.MainLoop()
+        changed_count = 0
 
         ns = "org.freedesktop.appearance"
         key = "color-scheme"
@@ -116,12 +114,13 @@ class TestSettings:
         assert value == current_value
 
         def cb_settings_changed(changed_ns, changed_key, changed_value):
+            nonlocal changed_count
+            changed_count += 1
             assert changed_ns == ns
             assert changed_key == key
             assert changed_value == new_value
-            mainloop.quit()
 
         settings_intf.connect_to_signal("SettingChanged", cb_settings_changed)
         mock_intf.SetSetting(ns, key, new_value)
 
-        mainloop.run()
+        xdp.wait_for(lambda: changed_count == 1)

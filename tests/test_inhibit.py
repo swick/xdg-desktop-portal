@@ -6,7 +6,6 @@ import tests as xdp
 
 import pytest
 from enum import Enum, Flag
-from gi.repository import GLib
 
 
 class InhibitFlags(Flag):
@@ -188,8 +187,6 @@ class TestInhibit:
         mock_intf = xdp.get_mock_iface(dbus_con)
 
         changed_count = 0
-        mainloop = GLib.MainLoop()
-        GLib.timeout_add(2000, mainloop.quit)
 
         request = xdp.Request(dbus_con, inhibit_intf)
         options = {
@@ -214,27 +211,27 @@ class TestInhibit:
         assert args[3] == ""  # parent window
 
         def state_changed_cb(session_handle, state):
-            nonlocal mainloop
             nonlocal changed_count
 
             assert not state["screensaver-active"]
             assert state["session-state"] == SessionState.QUERY_END.value
 
             changed_count += 1
-            mainloop.quit()
 
         inhibit_intf.connect_to_signal("StateChanged", state_changed_cb)
-        mainloop.run()
-        assert changed_count == 1
 
+        # wait for a Query End state change
+        xdp.wait_for(lambda: changed_count == 1)
+        assert not session.closed
+        # and respond with QueryEndResponse
         inhibit_intf.QueryEndResponse(session.handle)
 
-        GLib.timeout_add(1500, mainloop.quit)
-        mainloop.run()
-
+        # wait for another Query End state change
+        xdp.wait_for(lambda: changed_count == 2)
         assert not session.closed
 
-        GLib.timeout_add(1500, mainloop.quit)
-        mainloop.run()
+        # do not respond with QueryEndResponse and instead wait for >1s
+        xdp.wait(1500)
 
+        # the session should have gotten closed by now
         assert session.closed

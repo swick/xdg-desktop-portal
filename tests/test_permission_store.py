@@ -2,6 +2,8 @@
 #
 # This file is formatted with Python Black
 
+import tests as xdp
+
 import pytest
 import dbus
 from gi.repository import GLib, Gio
@@ -151,7 +153,6 @@ class TestPermissionStore:
 
     def test_delete_race(self, portals, dbus_con):
         permission_store_intf = PermissionStore()
-        mainloop = GLib.MainLoop()
         finished_count = 0
 
         table = "inhibit"
@@ -166,9 +167,7 @@ class TestPermissionStore:
         permission_store_intf.SetPermissionAsync(table, True, id, "a", perms, cb)
         permission_store_intf.DeleteAsync(table, id, cb)
 
-        while finished_count < 2:
-            GLib.timeout_add(50, mainloop.quit)
-            mainloop.run()
+        xdp.wait_for(lambda: finished_count >= 2)
 
         try:
             permission_store_intf.Lookup(table, id)
@@ -181,9 +180,7 @@ class TestPermissionStore:
         permission_store_intf.SetPermissionAsync(table, True, id, "b", perms, cb)
         permission_store_intf.DeletePermissionAsync(table, id, "a", cb)
 
-        while finished_count < 4:
-            GLib.timeout_add(50, mainloop.quit)
-            mainloop.run()
+        xdp.wait_for(lambda: finished_count >= 4)
 
         result, _ = permission_store_intf.Lookup(table, id)
         perms_out = result.unpack()[0]
@@ -193,9 +190,7 @@ class TestPermissionStore:
         permission_store_intf.DeletePermissionAsync(table, id, "b", cb)
         permission_store_intf.DeletePermissionAsync(table, id, "a", cb)
 
-        while finished_count < 7:
-            GLib.timeout_add(50, mainloop.quit)
-            mainloop.run()
+        xdp.wait_for(lambda: finished_count >= 7)
 
         result, _ = permission_store_intf.Lookup(table, id)
         perms_out = result.unpack()[0]
@@ -204,7 +199,6 @@ class TestPermissionStore:
     @pytest.mark.skip(reason="signal handler for Gio.DBusProxy does not run")
     def test_change(self, portals, dbus_con):
         permission_store_intf = PermissionStore()
-        mainloop = GLib.MainLoop()
         changed_count = 0
 
         table = "TEST"
@@ -226,9 +220,7 @@ class TestPermissionStore:
 
         permission_store_intf.SetPermissionAsync(table, True, id, app, perms, None)
 
-        while changed_count < 1:
-            GLib.timeout_add(50, mainloop.quit)
-            mainloop.run()
+        xdp.wait_for(lambda: changed_count >= 1)
 
         def cb_changed2(cb_table, cb_id, deleted, cb_data, cb_perms):
             nonlocal changed_count
@@ -239,16 +231,13 @@ class TestPermissionStore:
 
             changed_count += 1
 
-        GLib.timeout_add(1000, mainloop.quit)
-        mainloop.run()
+        xdp.wait(1000)
 
         cs.remove()
         cs = permission_store_intf.connect_to_signal("Changed", cb_changed2)
         permission_store_intf.Delete(table, id)
 
-        while changed_count < 2:
-            GLib.timeout_add(50, mainloop.quit)
-            mainloop.run()
+        xdp.wait_for(lambda: changed_count >= 2)
 
     @pytest.mark.skip(reason="makes further tests fail")
     def test_lookup(self, portals, dbus_con):
