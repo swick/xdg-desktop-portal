@@ -113,7 +113,7 @@ if enable_pytest
   # pytest xdist is nice because it significantly speeds up our
   # test process, but it's not required
   if pymod.find_installation('python3', modules: ['xdist'], required: false).found()
-    pytest_args += ['-n', 'auto']
+    pytest_args += ['-n', '5']
   endif
 
   pytest_files = [
