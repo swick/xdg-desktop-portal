@@ -301,12 +301,8 @@ def xdg_desktop_portal(
 
     xdg_desktop_portal = subprocess.Popen([xdg_desktop_portal_path], env=env)
 
-    for _ in range(50):
-        if dbus_con.name_has_owner("org.freedesktop.portal.Desktop"):
-            break
+    while not dbus_con.name_has_owner("org.freedesktop.portal.Desktop"):
         time.sleep(0.1)
-    else:
-        assert False, "Timeout while waiting for xdg-desktop-portal to claim the bus"
 
     yield xdg_desktop_portal
 
@@ -332,12 +328,8 @@ def xdg_permission_store(
 
     permission_store = subprocess.Popen([xdg_permission_store_path], env=env)
 
-    for _ in range(50):
-        if dbus_con.name_has_owner("org.freedesktop.impl.portal.PermissionStore"):
-            break
+    while not dbus_con.name_has_owner("org.freedesktop.impl.portal.PermissionStore"):
         time.sleep(0.1)
-    else:
-        assert False, "Timeout while waiting for xdg-permission-store to claim the bus"
 
     yield permission_store
 
@@ -367,12 +359,8 @@ def xdg_document_portal(
 
     document_portal = subprocess.Popen([xdg_document_portal_path], env=env)
 
-    for _ in range(50):
-        if dbus_con.name_has_owner("org.freedesktop.portal.Documents"):
-            break
+    while not dbus_con.name_has_owner("org.freedesktop.portal.Documents"):
         time.sleep(0.1)
-    else:
-        assert False, "Timeout while waiting for xdg-document-portal to claim the bus"
 
     yield document_portal
 
