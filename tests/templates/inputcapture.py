@@ -2,13 +2,13 @@
 #
 # This file is formatted with Python Black
 
+from tests.templates import Response, init_template_logger
 from collections import namedtuple
 from itertools import count
 from gi.repository import GLib
 
 import dbus
 import dbus.service
-import logging
 import socket
 
 BUS_NAME = "org.freedesktop.impl.portal.Test"
@@ -17,12 +17,10 @@ SYSTEM_BUS = False
 MAIN_IFACE = "org.freedesktop.impl.portal.InputCapture"
 VERSION = 1
 
-logger = logging.getLogger(f"templates.{__name__}")
-logger.setLevel(logging.DEBUG)
+logger = init_template_logger(__name__)
 
 serials = count()
 
-Response = namedtuple("Response", ["response", "results"])
 Barrier = namedtuple("Barrier", ["id", "position"])
 
 
