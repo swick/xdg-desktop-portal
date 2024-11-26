@@ -1,5 +1,4 @@
 env_tests = environment()
-env_tests.set('XDP_UNINSTALLED', '1')
 env_tests.set('XDG_DATA_DIRS', meson.current_build_dir() / 'share')
 env_tests.set('XDP_VALIDATE_ICON', xdp_validate_icon.full_path())
 env_tests.set('XDP_VALIDATE_SOUND', xdp_validate_sound.full_path())
