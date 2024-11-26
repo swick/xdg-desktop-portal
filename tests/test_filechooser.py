@@ -47,6 +47,7 @@ class TestFilechooser:
             options=options,
         )
 
+        assert response
         assert response.response == 0
         assert response.results["uris"] == FILECHOOSER_RESULTS["uris"]
 
@@ -80,6 +81,7 @@ class TestFilechooser:
             options=options,
         )
 
+        assert response
         assert response.response == 1
 
         # Check the impl portal was called with the right args
@@ -157,6 +159,7 @@ class TestFilechooser:
             options=options,
         )
 
+        assert response
         assert response.response == 0
         assert response.results["uris"] == FILECHOOSER_RESULTS["uris"]
 
@@ -224,6 +227,7 @@ class TestFilechooser:
             options=options,
         )
 
+        assert response
         assert response.response == 0
         assert response.results["uris"] == FILECHOOSER_RESULTS["uris"]
 
@@ -252,6 +256,7 @@ class TestFilechooser:
             options=options,
         )
 
+        assert response
         assert response.response == 0
         assert response.results["uris"] == FILECHOOSER_RESULTS["uris"]
 
@@ -359,6 +364,7 @@ class TestFilechooser:
             options=options,
         )
 
+        assert response
         assert response.response == 0
         assert response.results["uris"] == FILECHOOSER_RESULTS["uris"]
 
@@ -437,6 +443,7 @@ class TestFilechooser:
             options=options,
         )
 
+        assert response
         assert response.response == 0
         assert response.results["uris"] == FILECHOOSER_RESULTS["uris"]
 
@@ -470,6 +477,7 @@ class TestFilechooser:
             options=options,
         )
 
+        assert response
         assert response.response == 1
 
         # Check the impl portal was called with the right args
@@ -547,6 +555,7 @@ class TestFilechooser:
             options=options,
         )
 
+        assert response
         assert response.response == 0
         assert response.results["uris"] == FILECHOOSER_RESULTS["uris"]
 

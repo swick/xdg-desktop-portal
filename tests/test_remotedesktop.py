@@ -7,6 +7,7 @@ import tests as xdp
 import dbus
 import pytest
 import socket
+from typing import List, Dict, Any
 
 
 @pytest.fixture
@@ -31,6 +32,7 @@ class TestRemoteDesktop:
             options=options,
         )
 
+        assert response
         assert response.response == 0
 
         session = xdp.Session.from_response(dbus_con, response)
@@ -60,6 +62,7 @@ class TestRemoteDesktop:
             options=options,
         )
 
+        assert response
         assert response.response == 0
 
         session = xdp.Session.from_response(dbus_con, response)
@@ -85,6 +88,7 @@ class TestRemoteDesktop:
             options=options,
         )
 
+        assert response
         assert response.response == 0
 
         session = xdp.Session.from_response(dbus_con, response)
@@ -97,6 +101,7 @@ class TestRemoteDesktop:
             session_handle=session.handle,
             options=options,
         )
+        assert response
         assert response.response == 0
 
         request = xdp.Request(dbus_con, remotedesktop_intf)
@@ -107,6 +112,7 @@ class TestRemoteDesktop:
             parent_window="",
             options=options,
         )
+        assert response
         assert response.response == 0
 
         fd = remotedesktop_intf.ConnectToEIS(
@@ -131,6 +137,7 @@ class TestRemoteDesktop:
             options=options,
         )
 
+        assert response
         assert response.response == 0
 
         session = xdp.Session.from_response(dbus_con, response)
@@ -143,6 +150,7 @@ class TestRemoteDesktop:
             session_handle=session.handle,
             options=options,
         )
+        assert response
         assert response.response == 0
 
         request = xdp.Request(dbus_con, remotedesktop_intf)
@@ -153,6 +161,7 @@ class TestRemoteDesktop:
             parent_window="",
             options=options,
         )
+        assert response
         assert response.response == 0
 
         with pytest.raises(dbus.exceptions.DBusException) as excinfo:
@@ -173,6 +182,7 @@ class TestRemoteDesktop:
             options=options,
         )
 
+        assert response
         assert response.response == 0
 
         session = xdp.Session.from_response(dbus_con, response)
@@ -185,6 +195,7 @@ class TestRemoteDesktop:
             session_handle=session.handle,
             options=options,
         )
+        assert response
         assert response.response == 0
 
         request = xdp.Request(dbus_con, remotedesktop_intf)
@@ -195,9 +206,10 @@ class TestRemoteDesktop:
             parent_window="",
             options=options,
         )
+        assert response
         assert response.response == 0
 
-        for notifyfunc in [
+        notifyfuncs: List[Dict[str, Any]] = [
             {"name": "NotifyPointerMotion", "args": (1, 2)},
             {"name": "NotifyPointerMotionAbsolute", "args": (0, 1, 2)},
             {"name": "NotifyPointerButton", "args": (1, 1)},
@@ -208,7 +220,8 @@ class TestRemoteDesktop:
             {"name": "NotifyTouchDown", "args": (0, 0, 1, 1)},
             {"name": "NotifyTouchMotion", "args": (0, 0, 1, 1)},
             {"name": "NotifyTouchUp", "args": (0,)},
-        ]:
+        ]
+        for notifyfunc in notifyfuncs:
             with pytest.raises(dbus.exceptions.DBusException) as excinfo:
                 func = getattr(remotedesktop_intf, notifyfunc["name"])
                 assert func is not None

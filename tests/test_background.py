@@ -18,7 +18,7 @@ def required_templates():
 
 class TestBackground:
     def get_autostart_path(self, app_id):
-        return Path(os.getenv("XDG_CONFIG_HOME")) / "autostart" / f"{app_id}.desktop"
+        return Path(os.environ["XDG_CONFIG_HOME"]) / "autostart" / f"{app_id}.desktop"
 
     def get_autostart_keyfile(self, app_id):
         keyfile = GLib.KeyFile.new()
@@ -54,6 +54,7 @@ class TestBackground:
             options=options,
         )
 
+        assert response
         assert response.response == 0
         assert response.results["background"]
         assert not response.results["autostart"]
@@ -81,6 +82,7 @@ class TestBackground:
             options=options,
         )
 
+        assert response
         assert response.response == 0
         assert response.results["background"]
         assert response.results["autostart"]
@@ -110,6 +112,7 @@ class TestBackground:
             options=options,
         )
 
+        assert response
         assert response.response == 0
         assert response.results["background"]
         assert response.results["autostart"]
@@ -126,6 +129,7 @@ class TestBackground:
             options=options,
         )
 
+        assert response
         assert response.response == 0
         assert response.results["background"]
         assert not response.results["autostart"]

@@ -29,6 +29,7 @@ class TestClipboard:
         create_session_response = create_session_request.call(
             "CreateSession", options={"session_handle_token": "1234"}
         )
+        assert create_session_response
         assert create_session_response.response == 0
         assert str(create_session_response.results["session_handle"])
 
@@ -41,6 +42,7 @@ class TestClipboard:
             "Start", session_handle=session.handle, parent_window="", options={}
         )
 
+        assert start_session_response
         assert start_session_response.response == 0
 
         return (session, start_session_response.results.get("clipboard_enabled"))

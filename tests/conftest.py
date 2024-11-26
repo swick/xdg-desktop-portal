@@ -12,7 +12,8 @@
 # tests/templates. See the dbusmock documentation for details on those
 # templates.
 
-from typing import Any, Dict
+from typing import Any, Dict, Iterator, Optional
+from types import ModuleType
 
 import pytest
 import dbus
@@ -27,17 +28,17 @@ import signal
 from pathlib import Path
 
 
-def pytest_configure():
+def pytest_configure() -> None:
     ensure_environment_set()
     ensure_umockdev_loaded()
 
 
-def ensure_environment_set():
+def ensure_environment_set() -> None:
     if not os.getenv("G_TEST_BUILDDIR"):
         raise Exception("G_TEST_BUILDDIR must be set")
 
 
-def ensure_umockdev_loaded():
+def ensure_umockdev_loaded() -> None:
     umockdev_preload = "libumockdev-preload.so"
     preload = os.environ.get("LD_PRELOAD", "")
     if umockdev_preload not in preload:
@@ -45,8 +46,12 @@ def ensure_umockdev_loaded():
         os.execv(sys.executable, [sys.executable] + sys.argv)
 
 
+def test_build_dir() -> Path:
+    return Path(os.environ["G_TEST_BUILDDIR"])
+
+
 @pytest.fixture(autouse=True)
-def create_test_dirs(umockdev):
+def create_test_dirs(umockdev) -> Iterator[None]:
     # The umockdev argument is to make sure the testbed
     # is created before we create the tmpdir
     env_dirs = [
@@ -67,13 +72,13 @@ def create_test_dirs(umockdev):
         directory.mkdir(mode=0o700, parents=True)
         os.environ[env_dir] = str(directory.absolute())
 
-    yield test_root
+    yield
 
     test_root.cleanup()
 
 
 @pytest.fixture(autouse=True)
-def create_test_dbus():
+def create_test_dbus() -> Iterator[dbusmock.DBusTestCase]:
     bus = dbusmock.DBusTestCase()
     bus.setUp()
     bus.start_session_bus()
@@ -86,7 +91,7 @@ def create_test_dbus():
 
 
 @pytest.fixture(autouse=True)
-def create_dbus_monitor():
+def create_dbus_monitor() -> Iterator[Optional[subprocess.Popen]]:
     if not os.getenv("XDP_DBUS_MONITOR"):
         yield None
         return
@@ -99,7 +104,11 @@ def create_dbus_monitor():
     dbus_monitor.wait()
 
 
-def _get_server_for_module(busses, module, bustype):
+def _get_server_for_module(
+    busses: dict[dbusmock.BusType, dict[str, dbusmock.SpawnedMock]],
+    module: ModuleType,
+    bustype: dbusmock.BusType,
+) -> dbusmock.SpawnedMock:
     assert bustype in dbusmock.BusType
 
     try:
@@ -120,7 +129,9 @@ def _get_server_for_module(busses, module, bustype):
         return server
 
 
-def _get_main_obj_for_module(server, module, bustype):
+def _get_main_obj_for_module(
+    server: dbusmock.SpawnedMock, module: ModuleType, bustype: dbusmock.BusType
+) -> dbusmock.DBusMockObject:
     try:
         server.obj.AddObject(
             module.MAIN_OBJ,
@@ -137,7 +148,7 @@ def _get_main_obj_for_module(server, module, bustype):
     return bus.get_object(module.BUS_NAME, module.MAIN_OBJ)
 
 
-def _terminate_mock_p(process):
+def _terminate_mock_p(process: subprocess.Popen) -> None:
     if process.stdout:
         out = (process.stdout.read() or b"").decode("utf-8")
         if out:
@@ -147,14 +158,20 @@ def _terminate_mock_p(process):
     process.wait()
 
 
-def _terminate_servers(busses):
+def _terminate_servers(
+    busses: dict[dbusmock.BusType, dict[str, dbusmock.SpawnedMock]],
+) -> None:
     for server in busses[dbusmock.BusType.SYSTEM].values():
         _terminate_mock_p(server.process)
     for server in busses[dbusmock.BusType.SESSION].values():
         _terminate_mock_p(server.process)
 
 
-def _start_template(busses, template: str, params: Dict[str, Any] = {}):
+def _start_template(
+    busses: dict[dbusmock.BusType, dict[str, dbusmock.SpawnedMock]],
+    template: str,
+    params: Dict[str, Any] = {},
+) -> None:
     """
     Start the template and potentially start a server for it
     """
@@ -197,8 +214,14 @@ def required_templates() -> dict[str, dict[str, Any]]:
 
 
 @pytest.fixture
-def templates(required_templates, template_params):
-    busses = {dbusmock.BusType.SYSTEM: {}, dbusmock.BusType.SESSION: {}}
+def templates(
+    required_templates: dict[str, dict[str, Any]],
+    template_params: dict[str, dict[str, Any]],
+) -> Iterator[None]:
+    busses: dict[dbusmock.BusType, dict[str, dbusmock.SpawnedMock]] = {
+        dbusmock.BusType.SYSTEM: {},
+        dbusmock.BusType.SESSION: {},
+    }
     for template, params in required_templates.items():
         params = template_params.get(template, params)
         _start_template(busses, template, params)
@@ -207,17 +230,17 @@ def templates(required_templates, template_params):
 
 
 @pytest.fixture
-def xdp_overwrite_env():
+def xdp_overwrite_env() -> dict[str, str]:
     return {}
 
 
 @pytest.fixture
-def app_id():
+def app_id() -> str:
     return "org.example.Test"
 
 
 @pytest.fixture
-def xdp_env(umockdev, app_id, xdp_overwrite_env):
+def xdp_env(umockdev, app_id: str, xdp_overwrite_env: dict[str, str]) -> dict[str, str]:
     env = os.environ.copy()
     env["G_DEBUG"] = "fatal-criticals"
     env["XDG_CURRENT_DESKTOP"] = "test"
@@ -228,12 +251,12 @@ def xdp_env(umockdev, app_id, xdp_overwrite_env):
     if umockdev:
         env["UMOCKDEV_DIR"] = umockdev.get_root_dir()
 
-    portal_dir = Path(os.getenv("G_TEST_BUILDDIR")) / "test-portal-conf"
+    portal_dir = test_build_dir() / "test-portal-conf"
     if not portal_dir.exists():
         raise FileNotFoundError(f"{portal_dir} does not exist")
-    env["XDG_DESKTOP_PORTAL_DIR"] = portal_dir
+    env["XDG_DESKTOP_PORTAL_DIR"] = portal_dir.absolute().as_posix()
 
-    asan_suppression = Path(os.getenv("G_TEST_BUILDDIR", "tests")) / "asan.suppression"
+    asan_suppression = test_build_dir() / "asan.suppression"
     if not asan_suppression.exists():
         raise FileNotFoundError(f"{asan_suppression} does not exist")
     env["LSAN_OPTIONS"] = f"suppressions={asan_suppression}"
@@ -244,7 +267,7 @@ def xdp_env(umockdev, app_id, xdp_overwrite_env):
     return env
 
 
-def _maybe_add_asan_preload(executable, env):
+def _maybe_add_asan_preload(executable: Path, env: dict[str, str]) -> None:
     # ASAN really wants to be the first library to get loaded but we also
     # LD_PRELOAD umockdev and LD_PRELOAD gets loaded before any "normally"
     # linked libraries. This uses ldd to find the version of libasan.so that
@@ -262,12 +285,14 @@ def _maybe_add_asan_preload(executable, env):
 
 
 @pytest.fixture
-def xdg_desktop_portal_path():
-    return Path(os.getenv("G_TEST_BUILDDIR")) / ".." / "src" / "xdg-desktop-portal"
+def xdg_desktop_portal_path() -> Path:
+    return test_build_dir() / ".." / "src" / "xdg-desktop-portal"
 
 
 @pytest.fixture
-def xdg_desktop_portal(dbus_con, xdg_desktop_portal_path, xdp_env):
+def xdg_desktop_portal(
+    dbus_con: dbus.Bus, xdg_desktop_portal_path: Path, xdp_env: dict[str, str]
+) -> Iterator[subprocess.Popen]:
     if not xdg_desktop_portal_path.exists():
         raise FileNotFoundError(f"{xdg_desktop_portal_path} does not exist")
 
@@ -291,17 +316,14 @@ def xdg_desktop_portal(dbus_con, xdg_desktop_portal_path, xdp_env):
 
 
 @pytest.fixture
-def xdg_permission_store_path():
-    return (
-        Path(os.getenv("G_TEST_BUILDDIR"))
-        / ".."
-        / "document-portal"
-        / "xdg-permission-store"
-    )
+def xdg_permission_store_path() -> Path:
+    return test_build_dir() / ".." / "document-portal" / "xdg-permission-store"
 
 
 @pytest.fixture
-def xdg_permission_store(dbus_con, xdg_permission_store_path, xdp_env):
+def xdg_permission_store(
+    dbus_con: dbus.Bus, xdg_permission_store_path: Path, xdp_env: dict[str, str]
+) -> Iterator[subprocess.Popen]:
     if not xdg_permission_store_path.exists():
         raise FileNotFoundError(f"{xdg_permission_store_path} does not exist")
 
@@ -327,17 +349,14 @@ def xdg_permission_store(dbus_con, xdg_permission_store_path, xdp_env):
 
 
 @pytest.fixture
-def xdg_document_portal_path():
-    return (
-        Path(os.getenv("G_TEST_BUILDDIR"))
-        / ".."
-        / "document-portal"
-        / "xdg-document-portal"
-    )
+def xdg_document_portal_path() -> Path:
+    return test_build_dir() / ".." / "document-portal" / "xdg-document-portal"
 
 
 @pytest.fixture
-def xdg_document_portal(dbus_con, xdg_document_portal_path, xdp_env):
+def xdg_document_portal(
+    dbus_con: dbus.Bus, xdg_document_portal_path: Path, xdp_env: dict[str, str]
+) -> Iterator[subprocess.Popen]:
     if not xdg_document_portal_path.exists():
         raise FileNotFoundError(f"{xdg_document_portal_path} does not exist")
 
@@ -363,7 +382,7 @@ def xdg_document_portal(dbus_con, xdg_document_portal_path, xdp_env):
 
 
 @pytest.fixture
-def portals(templates, xdg_desktop_portal, xdg_permission_store):
+def portals(templates: Any, xdg_desktop_portal: Any, xdg_permission_store: Any) -> None:
     return None
 
 
@@ -373,12 +392,12 @@ def umockdev():
 
 
 @pytest.fixture
-def xdg_data_home_files():
+def xdg_data_home_files() -> Dict[str, bytes]:
     return {}
 
 
 @pytest.fixture(autouse=True)
-def ensure_xdg_data_home(create_test_dirs, xdg_data_home_files):
+def ensure_xdg_data_home(create_test_dirs, xdg_data_home_files) -> None:
     for name, content in xdg_data_home_files.items():
         file_path = Path(os.environ["XDG_DATA_HOME"]) / name
         file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -387,14 +406,14 @@ def ensure_xdg_data_home(create_test_dirs, xdg_data_home_files):
 
 
 @pytest.fixture
-def dbus_con(create_test_dbus):
+def dbus_con(create_test_dbus: dbusmock.DBusTestCase) -> dbus.Bus:
     con = create_test_dbus.get_dbus(system_bus=False)
     assert con
     return con
 
 
 @pytest.fixture
-def dbus_con_sys(create_test_dbus):
+def dbus_con_sys(create_test_dbus: dbusmock.DBusTestCase) -> dbus.Bus:
     con_sys = create_test_dbus.get_dbus(system_bus=True)
     assert con_sys
     return con_sys

@@ -6,6 +6,7 @@ import tests as xdp
 
 import dbus
 import pytest
+from typing import Any
 
 
 SCREENSHOT_DATA = dbus.Dictionary(
@@ -48,6 +49,7 @@ class TestScreenshot:
             options=options,
         )
 
+        assert response
         assert response.response == 0
         assert response.results["uri"] == SCREENSHOT_DATA["uri"]
 
@@ -99,6 +101,7 @@ class TestScreenshot:
             options=options,
         )
 
+        assert response
         assert response.response == 1
 
         # Check the impl portal was called with the right args
@@ -115,13 +118,14 @@ class TestScreenshot:
         mock_intf = xdp.get_mock_iface(dbus_con)
 
         request = xdp.Request(dbus_con, screenshot_intf)
-        options = {}
+        options: Any = {}
         response = request.call(
             "PickColor",
             parent_window="",
             options=options,
         )
 
+        assert response
         assert response.response == 0
         assert response.results["color"] == SCREENSHOT_DATA["color"]
 
@@ -140,7 +144,7 @@ class TestScreenshot:
 
         request = xdp.Request(dbus_con, screenshot_intf)
         request.schedule_close(100)
-        options = {}
+        options: Any = {}
         request.call(
             "PickColor",
             parent_window="",
@@ -156,13 +160,14 @@ class TestScreenshot:
         mock_intf = xdp.get_mock_iface(dbus_con)
 
         request = xdp.Request(dbus_con, screenshot_intf)
-        options = {}
+        options: Any = {}
         response = request.call(
             "PickColor",
             parent_window="",
             options=options,
         )
 
+        assert response
         assert response.response == 1
 
         # Check the impl portal was called with the right args

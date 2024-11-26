@@ -9,6 +9,7 @@ import pytest
 import os
 import tempfile
 from pathlib import Path
+from typing import Any
 
 
 PRINT_PREPARE_DATA = {
@@ -35,8 +36,8 @@ class TestPrint:
         mock_intf = xdp.get_mock_iface(dbus_con)
 
         title = "Test Title"
-        settings = {}
-        page_setup = {}
+        settings: Any = {}
+        page_setup: Any = {}
         options = {
             "modal": True,
             "accept_label": "Accept",
@@ -53,6 +54,7 @@ class TestPrint:
             options=options,
         )
 
+        assert response
         assert response.response == 0
 
         # Check the impl portal was called with the right args
@@ -88,6 +90,7 @@ class TestPrint:
             options={},
         )
 
+        assert response
         assert response.response == 1
 
         # Check the impl portal was called with the right args
@@ -177,6 +180,7 @@ class TestPrint:
             options=options,
         )
 
+        assert response
         assert response.response == 0
 
         # Check the impl portal was called with the right args
@@ -217,6 +221,7 @@ class TestPrint:
             options={},
         )
 
+        assert response
         assert response.response == 1
 
         # Check the impl portal was called with the right args
@@ -302,6 +307,7 @@ class TestPrint:
             options={},
         )
 
+        assert response
         assert response.response == 0
         assert response.results["token"] == PRINT_PREPARE_DATA["token"]
 
@@ -322,6 +328,7 @@ class TestPrint:
             options=options,
         )
 
+        assert response
         assert response.response == 0
 
         # Check the impl portal was called with the right args

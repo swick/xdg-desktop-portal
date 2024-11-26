@@ -59,6 +59,7 @@ class TestInhibit:
             options=options,
         )
 
+        assert response
         assert response.response == 0
 
         # Check the impl portal was called with the right args
@@ -90,6 +91,7 @@ class TestInhibit:
         )
 
         # for some reason, the backend failing is still considered a success
+        assert response
         assert response.response == 0
 
         # Check the impl portal was called with the right args
@@ -154,6 +156,7 @@ class TestInhibit:
             options=options,
         )
 
+        assert response
         assert response.response == 0
 
         method_calls = mock_intf.GetMethodCalls("Inhibit")
@@ -176,6 +179,7 @@ class TestInhibit:
             options=options,
         )
 
+        assert response
         assert response.response == 0
 
         method_calls = mock_intf.GetMethodCalls("Inhibit")
@@ -198,6 +202,7 @@ class TestInhibit:
             options=options,
         )
 
+        assert response
         assert response.response == 0
 
         session = xdp.Session.from_response(dbus_con, response)

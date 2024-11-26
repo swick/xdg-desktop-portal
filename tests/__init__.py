@@ -7,7 +7,7 @@
 from dbus.mainloop.glib import DBusGMainLoop
 from gi.repository import GLib
 from itertools import count
-from typing import Any, Dict, Optional, NamedTuple
+from typing import Any, Dict, Optional, NamedTuple, Callable
 
 import dbus
 import dbus.proxies
@@ -27,29 +27,29 @@ ASV = Dict[str, Any]
 logger = logging.getLogger("tests")
 
 
-def wait(ms):
+def wait(ms: int):
     mainloop = GLib.MainLoop()
     GLib.timeout_add(ms, mainloop.quit)
     mainloop.run()
 
 
-def wait_for(fn):
+def wait_for(fn: Callable[[], bool]):
     mainloop = GLib.MainLoop()
     while not fn():
         GLib.timeout_add(50, mainloop.quit)
         mainloop.run()
 
 
-def get_permission_store_iface(dbus_con):
-    obj = dbus_con.get_object(
+def get_permission_store_iface(bus: dbus.Bus):
+    obj = bus.get_object(
         "org.freedesktop.impl.portal.PermissionStore",
         "/org/freedesktop/impl/portal/PermissionStore",
     )
     return dbus.Interface(obj, "org.freedesktop.impl.portal.PermissionStore")
 
 
-def get_mock_iface(dbus_con):
-    obj = dbus_con.get_object(
+def get_mock_iface(bus: dbus.Bus):
+    obj = bus.get_object(
         "org.freedesktop.impl.portal.Test", "/org/freedesktop/portal/desktop"
     )
     return dbus.Interface(obj, dbusmock.MOCK_IFACE)
@@ -59,41 +59,41 @@ def portal_interface_name(portal_name) -> str:
     return f"org.freedesktop.portal.{portal_name}"
 
 
-def get_portal_iface(dbus_con, name) -> dbus.Interface:
+def get_portal_iface(bus: dbus.Bus, name: str) -> dbus.Interface:
     name = portal_interface_name(name)
-    return get_iface(dbus_con, name)
+    return get_iface(bus, name)
 
 
-def get_iface(dbus_con, name) -> dbus.Interface:
+def get_iface(bus: dbus.Bus, name: str) -> dbus.Interface:
     try:
-        ifaces = dbus_con._xdp_portal_ifaces
+        ifaces = bus._xdp_portal_ifaces
     except AttributeError:
-        ifaces = dbus_con._xdp_portal_ifaces = {}
+        ifaces = bus._xdp_portal_ifaces = {}
 
     try:
         intf = ifaces[name]
     except KeyError:
-        intf = dbus.Interface(get_xdp_dbus_object(dbus_con), name)
+        intf = dbus.Interface(get_xdp_dbus_object(bus), name)
         assert intf
         ifaces[name] = intf
     return intf
 
 
-def get_xdp_dbus_object(dbus_con) -> dbus.proxies.ProxyObject:
+def get_xdp_dbus_object(bus: dbus.Bus) -> dbus.proxies.ProxyObject:
     try:
-        obj = getattr(dbus_con, "_xdp_dbus_object")
+        obj = getattr(bus, "_xdp_dbus_object")
     except AttributeError:
-        obj = dbus_con.get_object(
+        obj = bus.get_object(
             "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop"
         )
         assert obj
-        dbus_con._xdp_dbus_object = obj
+        bus._xdp_dbus_object = obj
     return obj
 
 
-def check_version(dbus_con, portal, expected_version):
+def check_version(bus: dbus.Bus, portal: str, expected_version: int):
     properties_intf = dbus.Interface(
-        get_xdp_dbus_object(dbus_con), "org.freedesktop.DBus.Properties"
+        get_xdp_dbus_object(bus), "org.freedesktop.DBus.Properties"
     )
     portal_iface_name = portal_interface_name(portal)
     try:
@@ -133,7 +133,7 @@ class Closable:
         # GLib makes assertions in callbacks impossible, so we wrap all
         # callbacks into a try: except and store the error on the request to
         # be raised later when we're back in the main context
-        self.error = None
+        self.error: Optional[Exception] = None
 
         self._mainloop: Optional[GLib.MainLoop] = None
         self._impl_closed = False

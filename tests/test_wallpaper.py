@@ -49,6 +49,7 @@ class TestWallpaper:
             options=options,
         )
 
+        assert response
         assert response.response == 0
 
         # Check the impl portal was called with the right args
@@ -81,6 +82,7 @@ class TestWallpaper:
             options=options,
         )
 
+        assert response
         assert response.response == 0
 
         # Check the impl portal was called with the right args
@@ -118,6 +120,7 @@ class TestWallpaper:
             options=options,
         )
 
+        assert response
         assert response.response == 1
 
     def test_wallpaper_permission(self, portals, dbus_con, app_id):
@@ -142,6 +145,7 @@ class TestWallpaper:
             options=options,
         )
 
+        assert response
         assert response.response == 2
 
         # Check the impl portal was called with the right args

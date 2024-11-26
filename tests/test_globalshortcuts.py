@@ -31,6 +31,7 @@ class TestGlobalShortcuts:
             options=options,
         )
 
+        assert response
         assert response.response == 0
 
         session = xdp.Session.from_response(dbus_con, response)
@@ -62,6 +63,7 @@ class TestGlobalShortcuts:
             options=options,
         )
 
+        assert response
         assert response.response == 0
 
         session = xdp.Session.from_response(dbus_con, response)
@@ -87,6 +89,7 @@ class TestGlobalShortcuts:
             options=options,
         )
 
+        assert response
         assert response.response == 0
 
         session = xdp.Session.from_response(dbus_con, response)
@@ -117,6 +120,9 @@ class TestGlobalShortcuts:
             options={},
         )
 
+        assert response
+        assert response.response == 0
+
         request = xdp.Request(dbus_con, globalshortcuts_intf)
         options = {}
         response = request.call(
@@ -124,6 +130,9 @@ class TestGlobalShortcuts:
             session_handle=session.handle,
             options=options,
         )
+
+        assert response
+        assert response.response == 0
 
         assert len(list(response.results["shortcuts"])) == len(list(shortcuts))
 
@@ -143,6 +152,7 @@ class TestGlobalShortcuts:
             options=options,
         )
 
+        assert response
         assert response.response == 0
 
         session = xdp.Session.from_response(dbus_con, response)
@@ -165,6 +175,9 @@ class TestGlobalShortcuts:
             parent_window="",
             options={},
         )
+
+        assert response
+        assert response.response == 0
 
         activated_count = 0
         deactivated_count = 0

@@ -53,6 +53,7 @@ class TestAccount:
             options=options,
         )
 
+        assert response
         assert response.response == 0
         assert response.results["id"] == ACCOUNT_DATA["id"]
         assert response.results["name"] == ACCOUNT_DATA["name"]
@@ -89,6 +90,7 @@ class TestAccount:
             options=options,
         )
 
+        assert response
         assert response.response == 0
 
         # Check the impl portal was called with the right args

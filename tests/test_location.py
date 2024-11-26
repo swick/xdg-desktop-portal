@@ -69,6 +69,7 @@ class TestLocation:
             options={},
         )
 
+        assert start_session_response
         assert start_session_response.response == 0
 
         xdp.wait_for(lambda: location_updated)

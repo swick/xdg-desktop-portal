@@ -9,6 +9,7 @@ import pytest
 import socket
 from gi.repository import GLib
 from itertools import count
+from typing import Any
 
 
 counter = count()
@@ -50,9 +51,9 @@ class TestInputCapture:
             signature="sv",
         )
 
-        response, results = request.call(
-            "CreateSession", parent_window="", options=options
-        )
+        res = request.call("CreateSession", parent_window="", options=options)
+        assert res
+        response, results = res
         assert response == 0
         assert "session_handle" in results
         assert "capabilities" in results
@@ -79,10 +80,12 @@ class TestInputCapture:
         mock_intf = xdp.get_mock_iface(dbus_con)
 
         request = xdp.Request(dbus_con, inputcapture_intf)
-        options = {}
-        response, results = request.call(
+        options: Any = {}
+        res = request.call(
             "GetZones", session_handle=self.current_session_handle, options=options
         )
+        assert res
+        response, results = res
         assert response == 0
         assert "zones" in results
         assert "zone_set" in results
@@ -103,14 +106,16 @@ class TestInputCapture:
         mock_intf = xdp.get_mock_iface(dbus_con)
 
         request = xdp.Request(dbus_con, inputcapture_intf)
-        options = {}
-        response, results = request.call(
+        options: Any = {}
+        res = request.call(
             "SetPointerBarriers",
             session_handle=self.current_session_handle,
             options=options,
             barriers=barriers,
             zone_set=self.current_zone_set,
         )
+        assert res
+        response, results = res
         assert response == 0
         assert "failed_barriers" in results
 

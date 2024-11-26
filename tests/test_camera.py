@@ -40,6 +40,7 @@ class TestCamera:
             options={},
         )
 
+        assert response
         assert response.response == 0
 
         # Check the impl portal was called with the right args
@@ -59,6 +60,7 @@ class TestCamera:
             options={},
         )
 
+        assert response
         assert response.response == 1
 
         # Check the impl portal was called with the right args
@@ -121,6 +123,7 @@ class TestCamera:
             options={},
         )
 
+        assert response
         assert response.response == 1
 
         # Check the impl portal was called with the right args

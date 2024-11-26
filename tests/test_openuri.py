@@ -9,6 +9,7 @@ import pytest
 import os
 import tempfile
 from pathlib import Path
+from typing import Any
 
 
 defaults_list = """[Default Applications]
@@ -113,6 +114,7 @@ class TestOpenURI:
             options=options,
         )
 
+        assert response
         assert response.response == 0
 
         # Check the impl portal was called with the right args
@@ -149,6 +151,7 @@ class TestOpenURI:
             options=options,
         )
 
+        assert response
         assert response.response == 0
 
         # Check the impl portal was not called because the choice thresold
@@ -181,6 +184,7 @@ class TestOpenURI:
             options=options,
         )
 
+        assert response
         assert response.response == 0
 
         # Check the impl portal was called with the right args
@@ -210,7 +214,7 @@ class TestOpenURI:
         uri = "http://www.flatpak.org"
 
         request = xdp.Request(dbus_con, openuri_intf)
-        options = {}
+        options: Any = {}
         response = request.call(
             "OpenURI",
             parent_window="",
@@ -218,6 +222,7 @@ class TestOpenURI:
             options=options,
         )
 
+        assert response
         assert response.response == 1
 
     @pytest.mark.parametrize(
@@ -313,6 +318,7 @@ class TestOpenURI:
             options=options,
         )
 
+        assert response
         assert response.response == 0
 
         # Check the appchooser portal got called to open the containing dir

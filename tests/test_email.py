@@ -42,6 +42,7 @@ class TestEmail:
             options=options,
         )
 
+        assert response
         assert response.response == 0
 
         # Check the impl portal was called with the right args
@@ -102,6 +103,7 @@ class TestEmail:
             options=options,
         )
 
+        assert response
         assert response.response == 0
 
         # Check the impl portal was called with the right args
@@ -197,6 +199,7 @@ class TestEmail:
             options=options,
         )
 
+        assert response
         assert response.response == 0
 
         end_time = time.perf_counter()
@@ -238,6 +241,7 @@ class TestEmail:
             options=options,
         )
 
+        assert response
         assert response.response == 1
 
         # Check the impl portal was called with the right args
