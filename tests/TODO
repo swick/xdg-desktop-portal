@@ -1,6 +1,4 @@
 * get logging from harness, mocking templates and DUTs (x-d-p, document portal, permission store)
 * make debugging DUTs easier
-* Document pytest fixture
-* Document xdp functions
 * Allow installed tests
 * pytest -n 1 breaks test_permission_store.py test_document_fuse.py

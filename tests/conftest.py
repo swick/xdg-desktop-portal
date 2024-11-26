@@ -218,6 +218,11 @@ def templates(
     required_templates: dict[str, dict[str, Any]],
     template_params: dict[str, dict[str, Any]],
 ) -> Iterator[None]:
+    """
+    Fixture which starts the required templates with their parameters. Usually
+    the `portals` fixture is what you're looking for because it also starts
+    the portal frontend and the permission store.
+    """
     busses: dict[dbusmock.BusType, dict[str, dbusmock.SpawnedMock]] = {
         dbusmock.BusType.SYSTEM: {},
         dbusmock.BusType.SESSION: {},
@@ -231,11 +236,19 @@ def templates(
 
 @pytest.fixture
 def xdp_overwrite_env() -> dict[str, str]:
+    """
+    Default fixture which can be used to override the environment that gets
+    passed to xdg-desktop-portal, xdg-document-portal and xdg-permission-store.
+    """
     return {}
 
 
 @pytest.fixture
 def app_id() -> str:
+    """
+    Default fixture which can be used to override the app id that the portal
+    frontend will discover for incoming connections.
+    """
     return "org.example.Test"
 
 
@@ -293,6 +306,9 @@ def xdg_desktop_portal_path() -> Path:
 def xdg_desktop_portal(
     dbus_con: dbus.Bus, xdg_desktop_portal_path: Path, xdp_env: dict[str, str]
 ) -> Iterator[subprocess.Popen]:
+    """
+    Fixture which starts and eventually stops xdg-desktop-portal
+    """
     if not xdg_desktop_portal_path.exists():
         raise FileNotFoundError(f"{xdg_desktop_portal_path} does not exist")
 
@@ -320,6 +336,9 @@ def xdg_permission_store_path() -> Path:
 def xdg_permission_store(
     dbus_con: dbus.Bus, xdg_permission_store_path: Path, xdp_env: dict[str, str]
 ) -> Iterator[subprocess.Popen]:
+    """
+    Fixture which starts and eventually stops xdg-permission-store
+    """
     if not xdg_permission_store_path.exists():
         raise FileNotFoundError(f"{xdg_permission_store_path} does not exist")
 
@@ -349,6 +368,9 @@ def xdg_document_portal_path() -> Path:
 def xdg_document_portal(
     dbus_con: dbus.Bus, xdg_document_portal_path: Path, xdp_env: dict[str, str]
 ) -> Iterator[subprocess.Popen]:
+    """
+    Fixture which starts and eventually stops xdg-document-portal
+    """
     if not xdg_document_portal_path.exists():
         raise FileNotFoundError(f"{xdg_document_portal_path} does not exist")
 
@@ -371,16 +393,29 @@ def xdg_document_portal(
 
 @pytest.fixture
 def portals(templates: Any, xdg_desktop_portal: Any, xdg_permission_store: Any) -> None:
+    """
+    Fixture which starts the required templates, xdg-desktop-portal,
+    xdg-document-portal and xdg-permission-store. Most tests require this.
+    """
     return None
 
 
 @pytest.fixture
 def umockdev():
+    """
+    Default fixture which can be used to create a umockdev testbed which will
+    emulate udev in the xdg-desktop-portal, xdg-document-portal and
+    xdg-permission-store.
+    """
     return None
 
 
 @pytest.fixture
 def xdg_data_home_files() -> Dict[str, bytes]:
+    """
+    Default fixture which can be used to create files in the temporary home
+    directory of the test.
+    """
     return {}
 
 
@@ -395,6 +430,9 @@ def ensure_xdg_data_home(create_test_dirs, xdg_data_home_files) -> None:
 
 @pytest.fixture
 def dbus_con(create_test_dbus: dbusmock.DBusTestCase) -> dbus.Bus:
+    """
+    Default fixture which provides the python-dbus session bus of the test.
+    """
     con = create_test_dbus.get_dbus(system_bus=False)
     assert con
     return con
@@ -402,6 +440,9 @@ def dbus_con(create_test_dbus: dbusmock.DBusTestCase) -> dbus.Bus:
 
 @pytest.fixture
 def dbus_con_sys(create_test_dbus: dbusmock.DBusTestCase) -> dbus.Bus:
+    """
+    Default fixture which provides the python-dbus system bus of the test.
+    """
     con_sys = create_test_dbus.get_dbus(system_bus=True)
     assert con_sys
     return con_sys
