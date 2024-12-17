@@ -120,16 +120,31 @@ def xdg_data_home_files() -> Dict[str, bytes]:
     return {}
 
 
+@pytest.fixture
+def xdg_config_home_files() -> Dict[str, bytes]:
+    """
+    Default fixture which can be used to create files in the temporary
+    XDG_CONFIG_HOME directory of the test.
+    """
+    return {}
+
+
 @pytest.fixture(autouse=True)
-def ensure_xdg_data_home(
-    create_test_dirs: Any, xdg_data_home_files: Dict[str, bytes]
+def ensure_xdg_test_dirs_files(
+    create_test_dirs: Any,
+    xdg_data_home_files: Dict[str, bytes],
+    xdg_config_home_files: Dict[str, bytes],
 ) -> None:
-    files = xdg_data_home_files
-    for name, content in files.items():
-        file_path = Path(os.environ["XDG_DATA_HOME"]) / name
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(file_path.absolute().as_posix(), "wb") as f:
-            f.write(content)
+    def ensure_files(files, xdg_test_dir):
+        dir_path = Path(os.environ[xdg_test_dir])
+        for name, content in files.items():
+            file_path = dir_path / name
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(file_path.absolute().as_posix(), "wb") as f:
+                f.write(content)
+
+    ensure_files(xdg_data_home_files, "XDG_DATA_HOME")
+    ensure_files(xdg_config_home_files, "XDG_CONFIG_HOME")
 
 
 @pytest.fixture

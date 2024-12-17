@@ -105,6 +105,7 @@ pytest_files = [
   'test_trash.py',
   'test_usb.py',
   'test_wallpaper.py',
+  'test_webextensions.py',
 ]
 
 template_files = [
