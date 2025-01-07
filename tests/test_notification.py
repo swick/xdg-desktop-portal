@@ -182,8 +182,7 @@ class TestNotification:
             ),
         ]
 
-        i = 0
-        for body_in, body_expected in bodies:
+        for i, (body_in, body_expected) in enumerate(bodies):
             notification_in = NOTIFICATION_BASIC.copy()
             notification_in["markup-body"] = GLib.Variant("s", body_in)
 
@@ -201,9 +200,8 @@ class TestNotification:
                 )
                 assert body_expected
             except GLib.GError as e:
+                assert not body_expected
                 assert "invalid markup-body" in e.message
-
-            i += 1
 
     def test_notification_bad_arg(self, portals, dbus_con, app_id):
         notification = NOTIFICATION_BASIC.copy()
