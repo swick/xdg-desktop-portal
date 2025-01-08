@@ -308,10 +308,5 @@ settings_create (GDBusConnection *connection,
         }
     }
 
-  if (!n_impls)
-    {
-      return NULL;
-    }
-
   return G_DBUS_INTERFACE_SKELETON (g_steal_pointer (&settings));
 }
