@@ -217,6 +217,16 @@ org.freedesktop.impl.portal.Settings=test1;*;
     yield files
 
 
+def portal_config_no_backend():
+    # test that we get reasonable results with no backend
+    yield {
+        "test-portals.conf": b"""
+[preferred]
+default=test_no_backen
+"""
+    }
+
+
 @pytest.fixture
 def xdg_desktop_portal_dir_default_files():
     return next(portal_config_good())
@@ -270,6 +280,16 @@ class TestSettings:
 
         value = settings_intf.ReadAll([])
         assert value != SETTINGS_DATA
+
+    @pytest.mark.parametrize(
+        "xdg_desktop_portal_dir_default_files",
+        portal_config_no_backend(),
+    )
+    def test_settings_read_all_no_backend(self, portals, dbus_con):
+        settings_intf = xdp.get_portal_iface(dbus_con, "Settings")
+
+        value = settings_intf.ReadAll([])
+        assert value == {}
 
     @pytest.mark.parametrize(
         "xdg_desktop_portal_dir_default_files",
