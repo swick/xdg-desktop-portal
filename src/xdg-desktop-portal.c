@@ -26,6 +26,7 @@
 #include <locale.h>
 #include <stdio.h>
 #include <string.h>
+#include <libdex.h>
 
 #include <glib-unix.h>
 #include <glib/gi18n.h>
@@ -173,6 +174,35 @@ export_portal_implementation (GDBusConnection *connection,
 
   g_dbus_interface_skeleton_set_flags (skeleton,
                                        G_DBUS_INTERFACE_SKELETON_FLAGS_HANDLE_METHOD_INVOCATIONS_IN_THREAD);
+  g_signal_connect (skeleton, "g-authorize-method",
+                    G_CALLBACK (authorize_callback), NULL);
+
+  if (!g_dbus_interface_skeleton_export (skeleton,
+                                         connection,
+                                         DESKTOP_PORTAL_OBJECT_PATH,
+                                         &error))
+    {
+      g_warning ("Error: %s", error->message);
+      return;
+    }
+
+  g_debug ("providing portal %s", g_dbus_interface_skeleton_get_info (skeleton)->name);
+}
+
+static void
+export_portal_implementation_async (GDBusConnection        *connection,
+                                    GDBusInterfaceSkeleton *skeleton)
+{
+  g_autoptr(GError) error = NULL;
+
+  if (skeleton == NULL)
+    {
+      g_warning ("No skeleton to export");
+      return;
+    }
+
+  g_dbus_interface_skeleton_set_flags (skeleton,
+                                       G_DBUS_INTERFACE_SKELETON_FLAGS_NONE);
   g_signal_connect (skeleton, "g-authorize-method",
                     G_CALLBACK (authorize_callback), NULL);
 
@@ -343,10 +373,10 @@ on_bus_acquired (GDBusConnection *connection,
 
       tmp = find_portal_implementation ("org.freedesktop.impl.portal.Wallpaper");
       if (tmp != NULL)
-        export_portal_implementation (connection,
-                                      wallpaper_create (connection,
-                                                        access_impl->dbus_name,
-                                                        tmp->dbus_name));
+        export_portal_implementation_async (connection,
+                                            wallpaper_create (connection,
+                                                              access_impl->dbus_name,
+                                                              tmp->dbus_name));
     }
 
   implementation = find_portal_implementation ("org.freedesktop.impl.portal.Account");
@@ -504,6 +534,8 @@ main (int argc, char *argv[])
 
   load_portal_configuration (opt_verbose);
   load_installed_portals (opt_verbose);
+
+  dex_init ();
 
   loop = g_main_loop_new (NULL, FALSE);
 

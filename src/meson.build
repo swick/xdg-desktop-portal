@@ -144,6 +144,7 @@ common_deps = [
   gio_dep,
   gio_unix_dep,
   json_glib_dep,
+  libdex_dep,
 ]
 
 if gudev_dep.found()
