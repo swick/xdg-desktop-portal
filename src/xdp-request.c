@@ -33,6 +33,66 @@ G_DEFINE_TYPE_WITH_CODE (XdpRequest, xdp_request, XDP_DBUS_TYPE_REQUEST_SKELETON
                          G_IMPLEMENT_INTERFACE (XDP_DBUS_TYPE_REQUEST,
                                                 xdp_request_skeleton_iface_init))
 
+XdpRequestFinisher *
+xdp_request_finisher_new (XdpRequest *request,
+                          guint       response,
+                          GVariant   *results)
+{
+  XdpRequestFinisher *finisher = g_new0 (XdpRequestFinisher, 1);
+
+  finisher->request = g_object_ref (request);
+  finisher->response = response;
+
+  if (results)
+    finisher->results = g_variant_ref_sink (results);
+
+  return finisher;
+}
+
+void
+xdp_request_finisher_set_response (XdpRequestFinisher *finisher,
+                                   guint               response,
+                                   GVariant           *results)
+{
+  finisher->response = response;
+
+  g_clear_pointer (&finisher->results, g_variant_unref);
+  if (results)
+    finisher->results = g_variant_ref_sink (results);
+}
+
+void
+xdp_request_finisher_free (XdpRequestFinisher *finisher)
+{
+  XdpRequest *request = XDP_REQUEST (finisher->request);
+
+  if (request->exported)
+    {
+      g_autoptr(GVariant) results = NULL;
+
+      if (finisher->results)
+        {
+          results = g_steal_pointer (&finisher->results);
+        }
+      else
+        {
+          g_auto(GVariantBuilder) opt_builder =
+            G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE_VARDICT);
+
+          results = g_variant_ref_sink (g_variant_builder_end (&opt_builder));
+        }
+
+      g_debug ("sending response: %d", finisher->response);
+      xdp_dbus_request_emit_response (XDP_DBUS_REQUEST (request),
+                                      finisher->response,
+                                      results);
+      xdp_request_unexport (request);
+    }
+
+  g_clear_object (&finisher->request);
+  g_clear_pointer (&finisher->results, g_variant_unref);
+}
+
 static void
 xdp_request_on_signal_response (XdpDbusRequest *object,
                                 guint           arg_response,

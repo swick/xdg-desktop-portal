@@ -83,24 +83,6 @@ static XdpOptionKey wallpaper_options[] = {
 };
 
 static void
-finish_request (XdpRequest                   *request,
-                XdgDesktopPortalResponseEnum  response)
-
-{
-  if (request->exported)
-    {
-      g_auto(GVariantBuilder) opt_builder =
-        G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE_VARDICT);
-
-      g_debug ("sending response: %d", response);
-      xdp_dbus_request_emit_response (XDP_DBUS_REQUEST (request),
-                                      response,
-                                      g_variant_builder_end (&opt_builder));
-      xdp_request_unexport (request);
-    }
-}
-
-static void
 set_wallpaper (XdpDbusWallpaper      *object,
                GDBusMethodInvocation *invocation,
                const char            *parent_window,
@@ -108,6 +90,7 @@ set_wallpaper (XdpDbusWallpaper      *object,
                GVariant              *options)
 {
   XdpRequest *request = xdp_request_from_invocation (invocation);
+  g_autoptr(XdpRequestFinisher) finisher = NULL;
   const char *id = xdp_app_info_get_id (request->app_info);
   g_autoptr(GError) error = NULL;
   g_auto(GVariantBuilder) opt_builder =
@@ -117,14 +100,13 @@ set_wallpaper (XdpDbusWallpaper      *object,
   XdpPermission permission;
   guint backend_response = 2;
 
-  // FIXME Reuqest close guard autoptr + set the right exit value
+  finisher = xdp_request_finisher_new (request,
+                                       XDG_DESKTOP_PORTAL_RESPONSE_OTHER,
+                                       NULL);
 
   permission = xdp_fiber_get_permission (id, PERMISSION_TABLE, PERMISSION_ID);
   if (permission == XDP_PERMISSION_NO)
-    {
-      finish_request (request, XDG_DESKTOP_PORTAL_RESPONSE_OTHER);
-      return;
-    }
+    return;
 
   g_variant_lookup (options, "show-preview", "b", &show_preview);
   if (!show_preview && permission != XDP_PERMISSION_YES)
@@ -190,7 +172,6 @@ set_wallpaper (XdpDbusWallpaper      *object,
                                        &error))
         {
           g_warning ("Failed to show access dialog: %s", error->message);
-          finish_request (request, XDG_DESKTOP_PORTAL_RESPONSE_OTHER);
           return;
         }
 
@@ -200,7 +181,7 @@ set_wallpaper (XdpDbusWallpaper      *object,
 
       if (access_response != 0)
         {
-          finish_request (request, XDG_DESKTOP_PORTAL_RESPONSE_OTHER);
+          xdp_request_finisher_set_response (finisher, access_response, NULL);
           return;
         }
     }
@@ -213,7 +194,6 @@ set_wallpaper (XdpDbusWallpaper      *object,
   if (!impl_request)
     {
       g_warning ("Failed to to create wallpaper implementation proxy: %s", error->message);
-      finish_request (request, XDG_DESKTOP_PORTAL_RESPONSE_OTHER);
       return;
     }
 
@@ -236,11 +216,10 @@ set_wallpaper (XdpDbusWallpaper      *object,
     {
       g_dbus_error_strip_remote_error (error);
       g_warning ("A backend call failed: %s", error->message);
-      finish_request (request, XDG_DESKTOP_PORTAL_RESPONSE_OTHER);
       return;
     }
 
-  finish_request (request, backend_response);
+  xdp_request_finisher_set_response (finisher, backend_response, NULL);
 }
 
 static void
