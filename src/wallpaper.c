@@ -46,6 +46,9 @@ typedef struct _WallpaperClass WallpaperClass;
 struct _Wallpaper
 {
   XdpFutureWallpaperSkeleton parent_instance;
+
+  XdpDbusImplWallpaper *impl;
+  XdpDbusImplAccess *access_impl;
 };
 
 struct _WallpaperClass
@@ -53,16 +56,18 @@ struct _WallpaperClass
   XdpFutureWallpaperSkeletonClass parent_class;
 };
 
-static XdpDbusImplWallpaper *impl;
-static XdpDbusImplAccess *access_impl;
-static Wallpaper *wallpaper;
-
 GType wallpaper_get_type (void) G_GNUC_CONST;
 static void wallpaper_iface_init (XdpFutureWallpaperInterface *iface);
 
 G_DEFINE_TYPE_WITH_CODE (Wallpaper, wallpaper, XDP_TYPE_FUTURE_WALLPAPER_SKELETON,
                          G_IMPLEMENT_INTERFACE (XDP_TYPE_FUTURE_WALLPAPER,
                                                 wallpaper_iface_init));
+
+static inline Wallpaper *
+WALLPAPER (gpointer ptr)
+{
+  return G_TYPE_CHECK_INSTANCE_CAST (ptr, wallpaper_get_type (), Wallpaper);
+}
 
 static gboolean
 validate_set_on (const char *key,
@@ -89,6 +94,7 @@ set_wallpaper (XdpDbusWallpaper      *object,
                const char            *uri,
                GVariant              *options)
 {
+  Wallpaper *wallpaper = WALLPAPER (object);
   XdpRequest *request = xdp_request_from_invocation (invocation);
   g_autoptr(XdpRequestFinisher) finisher = NULL;
   const char *id = xdp_app_info_get_id (request->app_info);
@@ -159,7 +165,7 @@ set_wallpaper (XdpDbusWallpaper      *object,
 
     body = _("This permission can be changed at any time from the privacy settings.");
 
-    if (!xdp_fiber_impl_access_dialog (access_impl,
+    if (!xdp_fiber_impl_access_dialog (wallpaper->access_impl,
                                        request->id,
                                        app_id,
                                        parent_window,
@@ -190,9 +196,9 @@ set_wallpaper (XdpDbusWallpaper      *object,
         }
     }
 
-  impl_request = xdp_fiber_impl_request_proxy_new (g_dbus_proxy_get_connection (G_DBUS_PROXY (impl)),
+  impl_request = xdp_fiber_impl_request_proxy_new (g_dbus_proxy_get_connection (G_DBUS_PROXY (wallpaper->impl)),
                                                    G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES,
-                                                   g_dbus_proxy_get_name (G_DBUS_PROXY (impl)),
+                                                   g_dbus_proxy_get_name (G_DBUS_PROXY (wallpaper->impl)),
                                                    request->id,
                                                    &error);
   if (!impl_request)
@@ -209,7 +215,7 @@ set_wallpaper (XdpDbusWallpaper      *object,
 
   g_debug ("Calling SetWallpaperURI with %s", uri);
 
-  if (!xdp_fiber_impl_wallpaper_set_uri (impl,
+  if (!xdp_fiber_impl_wallpaper_set_uri (wallpaper->impl,
                                          request->id,
                                          id,
                                          parent_window,
@@ -313,9 +319,12 @@ wallpaper_class_init (WallpaperClass *klass)
 
 GDBusInterfaceSkeleton *
 wallpaper_create (GDBusConnection *connection,
-                  const char *dbus_name_access,
-                  const char *dbus_name_wallpaper)
+                  const char      *dbus_name_access,
+                  const char      *dbus_name_wallpaper)
 {
+  Wallpaper *wallpaper;
+  g_autoptr(XdpDbusImplWallpaper) impl = NULL;
+  g_autoptr(XdpDbusImplAccess) access_impl = NULL;
   g_autoptr(GError) error = NULL;
 
   impl = xdp_dbus_impl_wallpaper_proxy_new_sync (connection,
@@ -331,7 +340,6 @@ wallpaper_create (GDBusConnection *connection,
     }
 
   g_dbus_proxy_set_default_timeout (G_DBUS_PROXY (impl), G_MAXINT);
-  wallpaper = g_object_new (wallpaper_get_type (), NULL);
 
   access_impl = xdp_dbus_impl_access_proxy_new_sync (connection,
                                                      G_DBUS_PROXY_FLAGS_NONE,
@@ -339,6 +347,10 @@ wallpaper_create (GDBusConnection *connection,
                                                      DESKTOP_PORTAL_OBJECT_PATH,
                                                      NULL,
                                                      &error);
+
+  wallpaper = g_object_new (wallpaper_get_type (), NULL);
+  wallpaper->impl = g_steal_pointer (&impl);
+  wallpaper->access_impl = g_steal_pointer (&access_impl);
 
   return G_DBUS_INTERFACE_SKELETON (wallpaper);
 }
