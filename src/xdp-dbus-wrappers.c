@@ -154,6 +154,182 @@ xdp_fiber_impl_wallpaper_set_uri (XdpDbusImplWallpaper  *proxy,
   return TRUE;
 }
 
+struct _XdpFutureWallpaperSkeletonClass
+{
+  XdpDbusWallpaperSkeletonClass parent_class;
+};
+
+static void wallpaper_iface_init (XdpDbusWallpaperIface *iface);
+
+G_DEFINE_TYPE_WITH_CODE (XdpFutureWallpaperSkeleton,
+                         xdp_future_wallpaper_skeleton,
+                         XDP_DBUS_TYPE_WALLPAPER_SKELETON,
+                         G_IMPLEMENT_INTERFACE (XDP_DBUS_TYPE_WALLPAPER,
+                                                wallpaper_iface_init));
+
+typedef struct _SetWallpaperUriData
+{
+  XdpDbusWallpaper *object;
+  GDBusMethodInvocation *invocation;
+  char *arg_parent_window;
+  char *arg_uri;
+  GVariant *arg_options;
+} SetWallpaperUriData;
+
+static void
+set_wallpaper_uri_data_free (SetWallpaperUriData *d)
+{
+  g_clear_object (&d->object);
+  g_clear_object (&d->invocation);
+  g_clear_pointer (&d->arg_parent_window, g_free);
+  g_clear_pointer (&d->arg_uri, g_free);
+  g_clear_pointer (&d->arg_options, g_variant_unref);
+
+  g_free (d);
+}
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (SetWallpaperUriData,
+                               set_wallpaper_uri_data_free)
+
+G_DEFINE_INTERFACE (XdpFutureWallpaper, xdp_future_wallpaper, XDP_DBUS_TYPE_WALLPAPER)
+
+static void
+xdp_future_wallpaper_default_init (XdpFutureWallpaperInterface *iface)
+{
+}
+
+static DexFuture*
+handle_set_wallpaper_uri_future (gpointer user_data)
+{
+  SetWallpaperUriData *d = user_data;
+
+  XDP_FUTURE_WALLPAPER_GET_IFACE (d->object)
+    ->handle_set_wallpaper_uri (d->object,
+                                d->invocation,
+                                d->arg_parent_window,
+                                d->arg_uri,
+                                d->arg_options);
+
+  return NULL;
+}
+
+static gboolean
+handle_set_wallpaper_uri (XdpDbusWallpaper      *object,
+                          GDBusMethodInvocation *invocation,
+                          const char            *arg_parent_window,
+                          const char            *arg_uri,
+                          GVariant              *arg_options)
+{
+  g_autoptr(SetWallpaperUriData) data = NULL;
+  g_autoptr(DexFuture) future = NULL;
+
+  data = g_new0 (SetWallpaperUriData, 1);
+  data->object = g_object_ref (object);
+  data->invocation = g_object_ref (invocation);
+  data->arg_parent_window = g_strdup (arg_parent_window);
+  data->arg_uri = g_strdup (arg_uri);
+  data->arg_options = g_variant_ref (arg_options);
+
+  future = dex_scheduler_spawn (NULL,
+                                0,
+                                handle_set_wallpaper_uri_future,
+                                data,
+                                (GDestroyNotify) set_wallpaper_uri_data_free);
+  dex_future_disown (g_steal_pointer (&future));
+
+  return G_DBUS_METHOD_INVOCATION_UNHANDLED;
+}
+
+typedef struct _SetWallpaperFileData
+{
+  XdpDbusWallpaper *object;
+  GDBusMethodInvocation *invocation;
+  GUnixFDList *fd_list;
+  char *arg_parent_window;
+  GVariant *arg_fd;
+  GVariant *arg_options;
+} SetWallpaperFileData;
+
+static void
+set_wallpaper_file_data_free (SetWallpaperFileData *d)
+{
+  g_clear_object (&d->object);
+  g_clear_object (&d->invocation);
+  g_clear_object (&d->fd_list);
+  g_clear_pointer (&d->arg_parent_window, g_free);
+  g_clear_pointer (&d->arg_fd, g_variant_unref);
+  g_clear_pointer (&d->arg_options, g_variant_unref);
+
+  g_free (d);
+}
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (SetWallpaperFileData,
+                               set_wallpaper_file_data_free)
+
+static DexFuture*
+handle_set_wallpaper_file_future (gpointer user_data)
+{
+  SetWallpaperFileData *d = user_data;
+
+  XDP_FUTURE_WALLPAPER_GET_IFACE (d->object)
+    ->handle_set_wallpaper_file (d->object,
+                                 d->invocation,
+                                 d->fd_list,
+                                 d->arg_parent_window,
+                                 d->arg_fd,
+                                 d->arg_options);
+
+  return NULL;
+}
+
+static gboolean
+handle_set_wallpaper_file (XdpDbusWallpaper      *object,
+                           GDBusMethodInvocation *invocation,
+                           GUnixFDList           *fd_list,
+                           const char            *arg_parent_window,
+                           GVariant              *arg_fd,
+                           GVariant              *arg_options)
+{
+  g_autoptr(SetWallpaperFileData) data = NULL;
+  g_autoptr(DexFuture) future = NULL;
+
+  data = g_new0 (SetWallpaperFileData, 1);
+  data->object = g_object_ref (object);
+  data->invocation = g_object_ref (invocation);
+  data->fd_list = g_object_ref (fd_list);
+  data->arg_parent_window = g_strdup (arg_parent_window);
+  data->arg_fd = g_variant_ref (arg_fd);
+  data->arg_options = g_variant_ref (arg_options);
+
+  future = dex_scheduler_spawn (NULL,
+                                0,
+                                handle_set_wallpaper_file_future,
+                                data,
+                                (GDestroyNotify) set_wallpaper_file_data_free);
+  dex_future_disown (g_steal_pointer (&future));
+
+  return G_DBUS_METHOD_INVOCATION_UNHANDLED;
+}
+
+static void
+wallpaper_iface_init (XdpDbusWallpaperIface *iface)
+{
+  iface->handle_set_wallpaper_uri = handle_set_wallpaper_uri;
+  iface->handle_set_wallpaper_file = handle_set_wallpaper_file;
+}
+
+static void
+xdp_future_wallpaper_skeleton_init (XdpFutureWallpaperSkeleton *skeleton)
+{
+}
+
+static void
+xdp_future_wallpaper_skeleton_class_init (XdpFutureWallpaperSkeletonClass *klass)
+{
+}
+
+
+
 #define XDP_TYPE_IMPL_REQUEST_RESULT (xdp_impl_request_result_get_type())
 GType xdp_impl_request_result_get_type (void);
 
