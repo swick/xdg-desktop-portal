@@ -272,3 +272,63 @@ xdp_fiber_get_permission (const char *app_id,
 {
   return dex_await_uint (xdp_future_get_permission (app_id, table, id), NULL);
 }
+
+static void
+xdp_set_permission_cb (GObject      *object,
+                       GAsyncResult *result,
+                       gpointer      user_data)
+{
+  g_autoptr(DexPromise) promise = user_data;
+  g_autoptr(GError) error = NULL;
+
+  if (xdp_dbus_impl_permission_store_call_set_permission_finish (permission_store,
+                                                                 result,
+                                                                 &error))
+    dex_promise_resolve_boolean (promise, TRUE);
+  else
+    dex_promise_reject (promise, g_steal_pointer (&error));
+}
+
+DexFuture *
+xdp_future_set_permission (const char    *app_id,
+                           const char    *table,
+                           const char    *id,
+                           XdpPermission  permission)
+{
+  DexPromise *promise;
+  g_auto(GStrv) perms = NULL;
+
+  promise = dex_promise_new_cancellable ();
+
+  perms = xdp_permissions_from_tristate (permission);
+
+  xdp_dbus_impl_permission_store_call_set_permission (permission_store,
+                                                      table,
+                                                      TRUE,
+                                                      id,
+                                                      app_id,
+                                                      (const char * const *) perms,
+                                                      dex_promise_get_cancellable (promise),
+                                                      xdp_set_permission_cb,
+                                                      promise);
+
+  return DEX_FUTURE (promise);
+}
+
+void
+xdp_fiber_set_permission (const char    *app_id,
+                          const char    *table,
+                          const char    *id,
+                          XdpPermission  permission)
+{
+  g_autoptr(GError) error = NULL;
+
+  dex_await_boolean (xdp_future_set_permission (app_id, table, id, permission),
+                     &error);
+
+  if (error)
+    {
+      g_dbus_error_strip_remote_error (error);
+      g_warning ("Error updating permission store: %s", error->message);
+    }
+}

@@ -69,3 +69,13 @@ DexFuture * xdp_future_get_permission (const char *app_id,
 XdpPermission xdp_fiber_get_permission (const char *app_id,
                                         const char *table,
                                         const char *id);
+
+DexFuture * xdp_future_set_permission (const char    *app_id,
+                                       const char    *table,
+                                       const char    *id,
+                                       XdpPermission  permission);
+
+void xdp_fiber_set_permission (const char    *app_id,
+                               const char    *table,
+                               const char    *id,
+                               XdpPermission  permission);

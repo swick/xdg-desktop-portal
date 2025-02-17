@@ -175,9 +175,13 @@ set_wallpaper (XdpDbusWallpaper      *object,
           return;
         }
 
-      // FIXME sync
       if (permission == XDP_PERMISSION_UNSET)
-        xdp_set_permission_sync (id, PERMISSION_TABLE, PERMISSION_ID, access_response == 0 ? XDP_PERMISSION_YES : XDP_PERMISSION_NO);
+        {
+            xdp_fiber_set_permission (id,
+                                      PERMISSION_TABLE,
+                                      PERMISSION_ID,
+                                      access_response == 0 ? XDP_PERMISSION_YES : XDP_PERMISSION_NO);
+        }
 
       if (access_response != 0)
         {
