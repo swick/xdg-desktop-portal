@@ -25,6 +25,11 @@ XdpDbusImplRequest * xdp_fiber_impl_request_proxy_new (GDBusConnection  *connect
                                                        const gchar      *object_path,
                                                        GError          **error);
 
+struct _XdpFutureWallpaperSkeletonClass
+{
+  XdpDbusWallpaperSkeletonClass parent_class;
+};
+
 #define XDP_TYPE_FUTURE_WALLPAPER_SKELETON xdp_future_wallpaper_skeleton_get_type()
 G_DECLARE_DERIVABLE_TYPE (XdpFutureWallpaperSkeleton,
                           xdp_future_wallpaper_skeleton,
@@ -41,18 +46,18 @@ typedef struct _XdpFutureWallpaperInterface
 {
   GTypeInterface parent_iface;
 
-  gboolean (*handle_set_wallpaper_uri) (XdpDbusWallpaper      *object,
-                                        GDBusMethodInvocation *invocation,
-                                        char                  *arg_parent_window,
-                                        char                  *arg_uri,
-                                        GVariant              *arg_options);
+  void (*handle_set_wallpaper_uri) (XdpDbusWallpaper      *object,
+                                    GDBusMethodInvocation *invocation,
+                                    char                  *arg_parent_window,
+                                    char                  *arg_uri,
+                                    GVariant              *arg_options);
 
-  gboolean (*handle_set_wallpaper_file) (XdpDbusWallpaper      *object,
-                                         GDBusMethodInvocation *invocation,
-                                         GUnixFDList           *fd_list,
-                                         char                  *arg_parent_window,
-                                         GVariant              *arg_fd,
-                                         GVariant              *arg_options);
+  void (*handle_set_wallpaper_file) (XdpDbusWallpaper      *object,
+                                     GDBusMethodInvocation *invocation,
+                                     GUnixFDList           *fd_list,
+                                     char                  *arg_parent_window,
+                                     GVariant              *arg_fd,
+                                     GVariant              *arg_options);
 } XdpFutureWallpaperInterface;
 
 

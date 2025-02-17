@@ -154,11 +154,6 @@ xdp_fiber_impl_wallpaper_set_uri (XdpDbusImplWallpaper  *proxy,
   return TRUE;
 }
 
-struct _XdpFutureWallpaperSkeletonClass
-{
-  XdpDbusWallpaperSkeletonClass parent_class;
-};
-
 static void wallpaper_iface_init (XdpDbusWallpaperIface *iface);
 
 G_DEFINE_TYPE_WITH_CODE (XdpFutureWallpaperSkeleton,
@@ -233,11 +228,11 @@ handle_set_wallpaper_uri (XdpDbusWallpaper      *object,
   future = dex_scheduler_spawn (NULL,
                                 0,
                                 handle_set_wallpaper_uri_future,
-                                data,
+                                g_steal_pointer (&data),
                                 (GDestroyNotify) set_wallpaper_uri_data_free);
   dex_future_disown (g_steal_pointer (&future));
 
-  return G_DBUS_METHOD_INVOCATION_UNHANDLED;
+  return G_DBUS_METHOD_INVOCATION_HANDLED;
 }
 
 typedef struct _SetWallpaperFileData
@@ -304,11 +299,11 @@ handle_set_wallpaper_file (XdpDbusWallpaper      *object,
   future = dex_scheduler_spawn (NULL,
                                 0,
                                 handle_set_wallpaper_file_future,
-                                data,
+                                g_steal_pointer (&data),
                                 (GDestroyNotify) set_wallpaper_file_data_free);
   dex_future_disown (g_steal_pointer (&future));
 
-  return G_DBUS_METHOD_INVOCATION_UNHANDLED;
+  return G_DBUS_METHOD_INVOCATION_HANDLED;
 }
 
 static void
