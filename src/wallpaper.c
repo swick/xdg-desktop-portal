@@ -33,6 +33,7 @@
 #include "xdp-permissions.h"
 #include "xdp-request.h"
 #include "xdp-dbus.h"
+#include "xdp-dbus-wrappers.h"
 #include "xdp-impl-dbus.h"
 #include "xdp-utils.h"
 
@@ -103,138 +104,6 @@ set_wallpaper_request_free (SetWallpaperRequest *wpr)
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (SetWallpaperRequest, set_wallpaper_request_free)
 
-static void
-impl_request_proxy_new_cb (GObject      *object,
-                           GAsyncResult *result,
-                           gpointer      user_data)
-{
-  g_autoptr(DexPromise) promise = user_data;
-  g_autoptr(GError) error = NULL;
-  g_autoptr(XdpDbusImplRequest) impl_request = NULL;
-
-  impl_request = xdp_dbus_impl_request_proxy_new_finish (result, &error);
-
-  if (error == NULL)
-    dex_promise_resolve_object (promise, g_steal_pointer (&impl_request));
-  else
-    dex_promise_reject (promise, g_steal_pointer (&error));
-}
-
-static DexFuture *
-impl_request_proxy_new (GDBusConnection *connection,
-                        GDBusProxyFlags  flags,
-                        const gchar     *name,
-                        const gchar     *object_path)
-{
-  DexPromise *promise;
-
-  promise = dex_promise_new_cancellable ();
-
-  xdp_dbus_impl_request_proxy_new (connection,
-                                   flags,
-                                   name,
-                                   object_path,
-                                   dex_promise_get_cancellable (promise),
-                                   impl_request_proxy_new_cb,
-                                   dex_ref (promise));
-
-  return DEX_FUTURE (promise);
-}
-
-static void
-impl_wallpaper_call_set_wallpaper_uri_cb (GObject      *object,
-                                          GAsyncResult *result,
-                                          gpointer      user_data)
-{
-  g_autoptr(DexPromise) promise = user_data;
-  g_autoptr(GError) error = NULL;
-  guint response;
-
-  if (xdp_dbus_impl_wallpaper_call_set_wallpaper_uri_finish (XDP_DBUS_IMPL_WALLPAPER (object),
-                                                             &response,
-                                                             result,
-                                                             &error))
-    dex_promise_resolve_uint (promise, response);
-  else
-    dex_promise_reject (promise, g_steal_pointer (&error));
-}
-
-static DexFuture *
-impl_wallpaper_call_set_wallpaper_uri (XdpDbusImplWallpaper *proxy,
-                                       const gchar          *arg_handle,
-                                       const gchar          *arg_app_id,
-                                       const gchar          *arg_parent_window,
-                                       const gchar          *arg_uri,
-                                       GVariant             *arg_options)
-{
-  DexPromise *promise;
-
-  promise = dex_promise_new_cancellable ();
-  xdp_dbus_impl_wallpaper_call_set_wallpaper_uri (proxy,
-                                                  arg_handle,
-                                                  arg_app_id,
-                                                  arg_parent_window,
-                                                  arg_uri,
-                                                  arg_options,
-                                                  dex_promise_get_cancellable (promise),
-                                                  impl_wallpaper_call_set_wallpaper_uri_cb,
-                                                  dex_ref (promise));
-
-  return DEX_FUTURE (promise);
-}
-
-static void
-impl_access_call_access_dialog_cb (GObject      *object,
-                                   GAsyncResult *result,
-                                   gpointer      user_data)
-{
-  g_autoptr(DexPromise) promise = user_data;
-  g_autoptr(GError) error = NULL;
-  guint response;
-  g_autoptr(GVariant) results = NULL;
-
-  // FIXME: drops results
-
-  if (xdp_dbus_impl_access_call_access_dialog_finish (XDP_DBUS_IMPL_ACCESS (object),
-                                                      &response,
-                                                      &results,
-                                                      result,
-                                                      &error))
-    dex_promise_resolve_uint (promise, response);
-  else
-    dex_promise_reject (promise, g_steal_pointer (&error));
-}
-
-static DexFuture *
-impl_access_call_access_dialog (XdpDbusImplAccess *proxy,
-                                const gchar       *arg_handle,
-                                const gchar       *arg_app_id,
-                                const gchar       *arg_parent_window,
-                                const gchar       *arg_title,
-                                const gchar       *arg_subtitle,
-                                const gchar       *arg_body,
-                                GVariant          *arg_options)
-{
-  DexPromise *promise;
-
-  promise = dex_promise_new_cancellable ();
-  xdp_dbus_impl_access_call_access_dialog (proxy,
-                                           arg_handle,
-                                           arg_app_id,
-                                           arg_parent_window,
-                                           arg_title,
-                                           arg_subtitle,
-                                           arg_body,
-                                           arg_options,
-                                           dex_promise_get_cancellable (promise),
-                                           impl_access_call_access_dialog_cb,
-                                           dex_ref (promise));
-
-  return DEX_FUTURE (promise);
-}
-
-
-
 static gboolean
 validate_set_on (const char *key,
                  GVariant *value,
@@ -273,13 +142,7 @@ handle_set_wallpaper (gpointer user_data)
   uri = wallpaper_request->uri;
   options = wallpaper_request->options;
 
-  permission = dex_await_uint (xdp_get_permission (id, PERMISSION_TABLE, PERMISSION_ID), &error);
-  if (error != NULL)
-    {
-      g_warning ("Failed to get permission: %s", error->message);
-      return dex_future_new_for_error (g_steal_pointer (&error));
-    }
-
+  permission = xdp_fiber_get_permission (id, PERMISSION_TABLE, PERMISSION_ID);
   if (permission == XDP_PERMISSION_NO)
     return NULL;
 
@@ -333,18 +196,17 @@ handle_set_wallpaper (gpointer user_data)
         }
       body = _("This permission can be changed at any time from the privacy settings.");
 
-      access_response = dex_await_uint (impl_access_call_access_dialog (
-            access_impl,
-            request->id,
-            app_id,
-            parent_window,
-            title,
-            subtitle,
-            body,
-            g_variant_builder_end (&access_opt_builder)),
-          &error);
-
-      if (error != NULL)
+    if (!xdp_fiber_impl_access_dialog (access_impl,
+                                       request->id,
+                                       app_id,
+                                       parent_window,
+                                       title,
+                                       subtitle,
+                                       body,
+                                       g_variant_builder_end (&access_opt_builder),
+                                       &access_response,
+                                       NULL,
+                                       &error))
         {
           g_warning ("Failed to show access dialog: %s", error->message);
           return dex_future_new_for_error (g_steal_pointer (&error));
@@ -357,14 +219,12 @@ handle_set_wallpaper (gpointer user_data)
         return NULL;
     }
 
-  impl_request = dex_await_object (impl_request_proxy_new (
-      g_dbus_proxy_get_connection (G_DBUS_PROXY (impl)),
-      G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES,
-      g_dbus_proxy_get_name (G_DBUS_PROXY (impl)),
-      request->id),
-    &error);
-
-  if (error)
+  impl_request = xdp_fiber_impl_request_proxy_new (g_dbus_proxy_get_connection (G_DBUS_PROXY (impl)),
+                                                   G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES,
+                                                   g_dbus_proxy_get_name (G_DBUS_PROXY (impl)),
+                                                   request->id,
+                                                   &error);
+  if (!impl_request)
     {
       g_warning ("Failed to to create wallpaper implementation proxy: %s", error->message);
       return dex_future_new_for_error (g_steal_pointer (&error));
@@ -376,18 +236,17 @@ handle_set_wallpaper (gpointer user_data)
                       wallpaper_options, G_N_ELEMENTS (wallpaper_options),
                       NULL);
 
-  g_debug ("Calling SetWallpaperURI with %s", uri);
   guint backend_response = 2;
-  backend_response = dex_await_uint (impl_wallpaper_call_set_wallpaper_uri (
-        impl,
-        request->id,
-        id,
-        parent_window,
-        uri,
-        g_variant_builder_end (&opt_builder)),
-      &error);
+  g_debug ("Calling SetWallpaperURI with %s", uri);
 
-  if (error)
+  if (!xdp_fiber_impl_wallpaper_set_uri (impl,
+                                         request->id,
+                                         id,
+                                         parent_window,
+                                         uri,
+                                         g_variant_builder_end (&opt_builder),
+                                         &backend_response,
+                                         &error))
     {
       g_dbus_error_strip_remote_error (error);
       g_warning ("A backend call failed: %s", error->message);

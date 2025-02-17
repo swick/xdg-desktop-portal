@@ -108,6 +108,7 @@ xdg_desktop_portal_sources = files(
   'xdp-app-launch-context.c',
   'xdp-background-monitor.c',
   'xdp-call.c',
+  'xdp-dbus-wrappers.c',
   'xdp-documents.c',
   'xdp-permissions.c',
   'xdp-portal-impl.c',

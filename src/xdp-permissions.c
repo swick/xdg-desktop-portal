@@ -240,9 +240,9 @@ xdp_get_permission_cb (GObject      *object,
 }
 
 DexFuture *
-xdp_get_permission (const char *app_id,
-                    const char *table,
-                    const char *id)
+xdp_future_get_permission (const char *app_id,
+                           const char *table,
+                           const char *id)
 {
   DexPromise *promise;
   XdpGetPermissionData *data;
@@ -263,4 +263,12 @@ xdp_get_permission (const char *app_id,
                                               data);
 
   return DEX_FUTURE (promise);
+}
+
+XdpPermission
+xdp_fiber_get_permission (const char *app_id,
+                          const char *table,
+                          const char *id)
+{
+  return dex_await_uint (xdp_future_get_permission (app_id, table, id), NULL);
 }

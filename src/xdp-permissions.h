@@ -62,6 +62,10 @@ gboolean xdp_init_permission_store (GDBusConnection  *connection,
 
 XdpDbusImplPermissionStore *xdp_get_permission_store (void);
 
-DexFuture * xdp_get_permission (const char *app_id,
-                                const char *table,
-                                const char *id);
+DexFuture * xdp_future_get_permission (const char *app_id,
+                                       const char *table,
+                                       const char *id);
+
+XdpPermission xdp_fiber_get_permission (const char *app_id,
+                                        const char *table,
+                                        const char *id);
