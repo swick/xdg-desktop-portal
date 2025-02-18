@@ -746,7 +746,8 @@ cache_insert_app_info (const char *sender,
 }
 
 static void
-on_peer_died (const char *name)
+on_peer_died (const char *name,
+              void       *user_data)
 {
   G_LOCK (app_infos);
   if (app_info_by_unique_name)
@@ -845,7 +846,7 @@ xdp_connection_create_app_info_sync (GDBusConnection  *connection,
 
   cache_insert_app_info (sender, app_info);
 
-  xdp_connection_track_name_owners (connection, on_peer_died);
+  xdp_connection_track_peer (connection, NULL, on_peer_died, NULL, NULL);
 
   return g_steal_pointer (&app_info);
 }
@@ -899,7 +900,7 @@ xdp_connection_create_host_app_info_sync (GDBusConnection  *connection,
 
   cache_insert_app_info (sender, app_info);
 
-  xdp_connection_track_name_owners (connection, on_peer_died);
+  xdp_connection_track_peer (connection, NULL, on_peer_died, NULL, NULL);
 
   return g_steal_pointer (&app_info);
 }

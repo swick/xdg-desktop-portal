@@ -1530,7 +1530,8 @@ xdp_usb_init (XdpUsb *self)
 }
 
 static void
-peer_died_cb (const char *sender)
+peer_died_cb (const char *sender,
+              void       *user_data)
 {
   if (usb && g_hash_table_remove (usb->sender_infos, sender))
     g_debug ("Removed sender %s", sender);
@@ -1554,7 +1555,7 @@ xdp_usb_create (GDBusConnection *connection,
       return NULL;
     }
 
-  xdp_connection_track_name_owners (connection, peer_died_cb);
+  xdp_connection_track_peer (connection, NULL, peer_died_cb, NULL, NULL);
 
   g_dbus_proxy_set_default_timeout (G_DBUS_PROXY (usb_impl), G_MAXINT);
 

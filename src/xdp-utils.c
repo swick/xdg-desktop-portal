@@ -119,20 +119,36 @@ needs_quoting (const char *arg)
   return FALSE;
 }
 
-static void
-name_owner_changed (GDBusConnection *connection,
-                    const gchar     *sender_name,
-                    const gchar     *object_path,
-                    const gchar     *interface_name,
-                    const gchar     *signal_name,
-                    GVariant        *parameters,
-                    gpointer         user_data)
+typedef struct _XdpConnectionTrackPeerData
 {
-  const char *name, *from, *to;
-  XdpPeerDiedCallback peer_died_cb = user_data;
+  char *name;
+  XdpConnectioTrackPeerCb callback;
+  void *user_data;
+  GDestroyNotify user_data_free_func;
+} XdpConnectionTrackPeerData;
 
-  if (!peer_died_cb)
-    return;
+static void
+xdp_connection_track_peer_data_free (XdpConnectionTrackPeerData *data)
+{
+  g_clear_pointer (&data->name, g_free);
+
+  if (data->user_data_free_func)
+    g_clear_pointer (&data->user_data, data->user_data_free_func);
+
+  g_free (data);
+}
+
+static void
+on_name_owner_changed (GDBusConnection *connection,
+                       const gchar     *sender_name,
+                       const gchar     *object_path,
+                       const gchar     *interface_name,
+                       const gchar     *signal_name,
+                       GVariant        *parameters,
+                       gpointer         user_data)
+{
+  XdpConnectionTrackPeerData *data = user_data;
+  const char *name, *from, *to;
 
   g_variant_get (parameters, "(&s&s&s)", &name, &from, &to);
 
@@ -141,13 +157,25 @@ name_owner_changed (GDBusConnection *connection,
       strcmp (to, "") != 0)
     return;
 
-  peer_died_cb (name);
+  if (data->name && g_strcmp0 (data->name, name) != 0)
+    return;
+
+  data->callback (name, data->user_data);
 }
 
 void
-xdp_connection_track_name_owners (GDBusConnection     *connection,
-                                  XdpPeerDiedCallback  peer_died_cb)
+xdp_connection_track_peer (GDBusConnection         *connection,
+                           const char              *name,
+                           XdpConnectioTrackPeerCb  callback,
+                           void                    *user_data,
+                           GDestroyNotify           user_data_free_func)
 {
+  XdpConnectionTrackPeerData *data = g_new0 (XdpConnectionTrackPeerData, 1);
+  data->name = g_strdup (name);
+  data->callback = callback;
+  data->user_data = user_data;
+  data->user_data_free_func = user_data_free_func;
+
   g_dbus_connection_signal_subscribe (connection,
                                       DBUS_NAME_DBUS,
                                       DBUS_INTERFACE_DBUS,
@@ -155,8 +183,9 @@ xdp_connection_track_name_owners (GDBusConnection     *connection,
                                       DBUS_PATH_DBUS,
                                       NULL,
                                       G_DBUS_SIGNAL_FLAGS_NONE,
-                                      name_owner_changed,
-                                      peer_died_cb, NULL);
+                                      on_name_owner_changed,
+                                      data,
+                                      (GDestroyNotify) xdp_connection_track_peer_data_free);
 }
 
 gboolean

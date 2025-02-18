@@ -246,7 +246,8 @@ export_host_portal_implementation (GDBusConnection        *connection,
 }
 
 static void
-peer_died_cb (const char *name)
+peer_died_cb (const char *name,
+              void       *user_data)
 {
   close_requests_for_sender (name);
   close_sessions_for_sender (name);
@@ -275,7 +276,7 @@ on_bus_acquired (GDBusConnection *connection,
   /* make sure errors are registered */
   portal_errors = XDG_DESKTOP_PORTAL_ERROR;
 
-  xdp_connection_track_name_owners (connection, peer_died_cb);
+  xdp_connection_track_peer (connection, NULL, peer_died_cb, NULL, NULL);
 
   if (!xdp_init_permission_store (connection, &error))
     {
