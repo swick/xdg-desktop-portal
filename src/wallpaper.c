@@ -30,7 +30,7 @@
 
 #include "wallpaper.h"
 #include "xdp-permissions.h"
-#include "xdp-request.h"
+#include "xdp-request-fiber.h"
 #include "xdp-dbus.h"
 #include "xdp-dbus-wrappers.h"
 #include "xdp-impl-dbus.h"
@@ -87,27 +87,20 @@ static XdpOptionKey wallpaper_options[] = {
 };
 
 static void
-set_wallpaper (XdpDbusWallpaper      *object,
-               GDBusMethodInvocation *invocation,
+set_wallpaper (Wallpaper             *wallpaper,
+               XdpRequestFiber       *request,
+               XdpAppInfo            *app_info,
                const char            *parent_window,
                const char            *uri,
                GVariant              *options)
 {
-  Wallpaper *wallpaper = WALLPAPER (object);
-  XdpRequest *request = xdp_request_from_invocation (invocation);
-  g_autoptr(XdpRequestFinisher) finisher = NULL;
-  const char *id = xdp_app_info_get_id (request->app_info);
+  const char *id = xdp_app_info_get_id (app_info);
   g_autoptr(GError) error = NULL;
   g_auto(GVariantBuilder) opt_builder =
     G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE_VARDICT);
-  g_autoptr(XdpDbusImplRequest) impl_request = NULL;
   gboolean show_preview = FALSE;
   XdpPermission permission;
   guint backend_response = 2;
-
-  finisher = xdp_request_finisher_new (request,
-                                       XDG_DESKTOP_PORTAL_RESPONSE_OTHER,
-                                       NULL);
 
   permission = xdp_fiber_get_permission (id, PERMISSION_TABLE, PERMISSION_ID);
   if (permission == XDP_PERMISSION_NO)
@@ -134,7 +127,7 @@ set_wallpaper (XdpDbusWallpaper      *object,
 
       if (g_strcmp0 (id, "") != 0)
         {
-          GAppInfo *info = xdp_app_info_get_gappinfo (request->app_info);
+          GAppInfo *info = xdp_app_info_get_gappinfo (app_info);
           const gchar *name = NULL;
 
           if (info)
@@ -156,7 +149,7 @@ set_wallpaper (XdpDbusWallpaper      *object,
           /* Note: this will set the wallpaper permission for all unsandboxed
            * apps for which an app ID can't be determined.
            */
-          g_assert (xdp_app_info_is_host (request->app_info));
+          g_assert (xdp_app_info_is_host (app_info));
           app_id = g_strdup ("");
           title = g_strdup (_("Allow Applications to Set Backgrounds?"));
           subtitle = g_strdup (_("An application is requesting to be able to change the background image."));
@@ -165,7 +158,7 @@ set_wallpaper (XdpDbusWallpaper      *object,
     body = _("This permission can be changed at any time from the privacy settings.");
 
     if (!xdp_fiber_impl_access_dialog (wallpaper->access_impl,
-                                       request->id,
+                                       xdp_request_fiber_get_path (request),
                                        app_id,
                                        parent_window,
                                        title,
@@ -190,23 +183,10 @@ set_wallpaper (XdpDbusWallpaper      *object,
 
       if (access_response != 0)
         {
-          xdp_request_finisher_set_response (finisher, access_response, NULL);
+          xdp_request_fiber_set_response (request, access_response, NULL);
           return;
         }
     }
-
-  impl_request = xdp_fiber_impl_request_proxy_new (g_dbus_proxy_get_connection (G_DBUS_PROXY (wallpaper->impl)),
-                                                   G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES,
-                                                   g_dbus_proxy_get_name (G_DBUS_PROXY (wallpaper->impl)),
-                                                   request->id,
-                                                   &error);
-  if (!impl_request)
-    {
-      g_warning ("Failed to to create wallpaper implementation proxy: %s", error->message);
-      return;
-    }
-
-  xdp_request_set_impl_request (request, impl_request);
 
   xdp_filter_options (options, &opt_builder,
                       wallpaper_options, G_N_ELEMENTS (wallpaper_options),
@@ -215,7 +195,7 @@ set_wallpaper (XdpDbusWallpaper      *object,
   g_debug ("Calling SetWallpaperURI with %s", uri);
 
   if (!xdp_fiber_impl_wallpaper_set_uri (wallpaper->impl,
-                                         request->id,
+                                         xdp_request_fiber_get_path (request),
                                          id,
                                          parent_window,
                                          uri,
@@ -228,7 +208,7 @@ set_wallpaper (XdpDbusWallpaper      *object,
       return;
     }
 
-  xdp_request_finisher_set_response (finisher, backend_response, NULL);
+  xdp_request_fiber_set_response (request, backend_response, NULL);
 }
 
 static void
@@ -238,14 +218,35 @@ handle_set_wallpaper_uri (XdpDbusWallpaper      *object,
                           char                  *arg_uri,
                           GVariant              *arg_options)
 {
-  XdpRequest *request = xdp_request_from_invocation (invocation);
+  Wallpaper *wallpaper = WALLPAPER (object);
+  XdpAppInfo *app_info = g_object_get_data (G_OBJECT (invocation), "app-info");
+  g_autoptr(XdpRequestFiber) request = NULL;
+  g_autoptr(GError) error = NULL;
 
   g_debug ("Handle SetWallpaperURI");
 
-  xdp_request_export (request, g_dbus_method_invocation_get_connection (invocation));
-  xdp_dbus_wallpaper_complete_set_wallpaper_uri (object, invocation, request->id);
+  request =
+    xdp_request_fiber_new_from_options (invocation,
+                                        app_info,
+                                        arg_options,
+                                        g_dbus_proxy_get_name (G_DBUS_PROXY (wallpaper->impl)),
+                                        &error);
+  if (request == NULL)
+    {
+      g_dbus_method_invocation_return_gerror (invocation, error);
+      return;
+    }
 
-  set_wallpaper (object, invocation, arg_parent_window, arg_uri, arg_options);
+  xdp_dbus_wallpaper_complete_set_wallpaper_uri (object,
+                                                 invocation,
+                                                 xdp_request_fiber_get_path (request));
+
+  set_wallpaper (wallpaper,
+                 request,
+                 app_info,
+                 arg_parent_window,
+                 arg_uri,
+                 arg_options);
 }
 
 static void
@@ -256,7 +257,10 @@ handle_set_wallpaper_file (XdpDbusWallpaper      *object,
                            GVariant              *arg_fd,
                            GVariant              *arg_options)
 {
-  XdpRequest *request = xdp_request_from_invocation (invocation);
+
+  Wallpaper *wallpaper = WALLPAPER (object);
+  XdpAppInfo *app_info = g_object_get_data (G_OBJECT (invocation), "app-info");
+  g_autoptr(XdpRequestFiber) request = NULL;
   g_autofree char *path = NULL;
   g_autofree char *uri = NULL;
   int fd_id, fd;
@@ -281,7 +285,7 @@ handle_set_wallpaper_file (XdpDbusWallpaper      *object,
       return;
     }
 
-  path = xdp_app_info_get_path_for_fd (request->app_info, fd, 0, NULL, NULL, &error);
+  path = xdp_app_info_get_path_for_fd (app_info, fd, 0, NULL, NULL, &error);
   if (path == NULL)
     {
       g_debug ("Cannot get path for fd: %s", error->message);
@@ -292,10 +296,29 @@ handle_set_wallpaper_file (XdpDbusWallpaper      *object,
 
   uri = g_filename_to_uri (path, NULL, NULL);
 
-  xdp_request_export (request, g_dbus_method_invocation_get_connection (invocation));
-  xdp_dbus_wallpaper_complete_set_wallpaper_file (object, invocation, NULL, request->id);
+  request =
+    xdp_request_fiber_new_from_options (invocation,
+                                        app_info,
+                                        arg_options,
+                                        g_dbus_proxy_get_name (G_DBUS_PROXY (wallpaper->impl)),
+                                        &error);
+  if (request == NULL)
+    {
+      g_dbus_method_invocation_return_gerror (invocation, error);
+      return;
+    }
 
-  set_wallpaper (object, invocation, arg_parent_window, uri, arg_options);
+  xdp_dbus_wallpaper_complete_set_wallpaper_file (object,
+                                                  invocation,
+                                                  NULL,
+                                                  xdp_request_fiber_get_path (request));
+
+  set_wallpaper (wallpaper,
+                 request,
+                 app_info,
+                 arg_parent_window,
+                 uri,
+                 arg_options);
 }
 
 static void

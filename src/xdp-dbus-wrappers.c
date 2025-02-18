@@ -15,13 +15,7 @@
  * License along with this library. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <stdint.h>
-#include <glib.h>
-#include <gio/gio.h>
 #include <libdex.h>
-
-#include "xdp-dbus.h"
-#include "xdp-impl-dbus.h"
 
 #include "xdp-dbus-wrappers.h"
 
@@ -77,7 +71,42 @@ xdp_fiber_impl_request_proxy_new (GDBusConnection  *connection,
                            error);
 }
 
+static void
+impl_request_call_close_cb (GObject      *object,
+                            GAsyncResult *result,
+                            gpointer      user_data)
+{
+  g_autoptr(DexPromise) promise = user_data;
+  g_autoptr(GError) error = NULL;
 
+  if (xdp_dbus_impl_request_call_close_finish (XDP_DBUS_IMPL_REQUEST (object),
+                                               result,
+                                               &error))
+    dex_promise_resolve_boolean (promise, TRUE);
+  else
+    dex_promise_reject (promise, g_steal_pointer (&error));
+}
+
+static DexFuture *
+xdp_future_impl_request_close (XdpDbusImplRequest *proxy)
+{
+  DexPromise *promise;
+
+  promise = dex_promise_new_cancellable ();
+  xdp_dbus_impl_request_call_close (proxy,
+                                    dex_promise_get_cancellable (promise),
+                                    impl_request_call_close_cb,
+                                    dex_ref (promise));
+
+  return DEX_FUTURE (promise);
+}
+
+gboolean
+xdp_fiber_impl_request_close (XdpDbusImplRequest  *proxy,
+                              GError             **error)
+{
+  return dex_await_boolean (xdp_future_impl_request_close (proxy), error);
+}
 
 static void
 impl_wallpaper_call_set_wallpaper_uri_cb (GObject      *object,

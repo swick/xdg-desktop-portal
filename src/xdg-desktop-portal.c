@@ -189,8 +189,34 @@ export_portal_implementation (GDBusConnection *connection,
   g_debug ("providing portal %s", g_dbus_interface_skeleton_get_info (skeleton)->name);
 }
 
+static gboolean
+authorize_fiber_callback (GDBusInterfaceSkeleton *interface,
+                          GDBusMethodInvocation  *invocation,
+                          gpointer                user_data)
+{
+  g_autoptr(XdpAppInfo) app_info = NULL;
+  g_autoptr(GError) error = NULL;
+
+  app_info = xdp_invocation_ensure_app_info_sync (invocation, NULL, &error);
+  if (app_info == NULL)
+    {
+      g_dbus_method_invocation_return_error (invocation,
+                                             G_DBUS_ERROR,
+                                             G_DBUS_ERROR_ACCESS_DENIED,
+                                             "Portal operation not allowed: %s", error->message);
+      return FALSE;
+    }
+
+  g_object_set_data_full (G_OBJECT (invocation),
+                          "app-info",
+                          g_steal_pointer (&app_info),
+                          g_object_unref);
+
+  return TRUE;
+}
+
 static void
-export_portal_implementation_async (GDBusConnection        *connection,
+export_portal_implementation_fiber (GDBusConnection        *connection,
                                     GDBusInterfaceSkeleton *skeleton)
 {
   g_autoptr(GError) error = NULL;
@@ -201,10 +227,8 @@ export_portal_implementation_async (GDBusConnection        *connection,
       return;
     }
 
-  g_dbus_interface_skeleton_set_flags (skeleton,
-                                       G_DBUS_INTERFACE_SKELETON_FLAGS_NONE);
   g_signal_connect (skeleton, "g-authorize-method",
-                    G_CALLBACK (authorize_callback), NULL);
+                    G_CALLBACK (authorize_fiber_callback), NULL);
 
   if (!g_dbus_interface_skeleton_export (skeleton,
                                          connection,
@@ -374,7 +398,7 @@ on_bus_acquired (GDBusConnection *connection,
 
       tmp = find_portal_implementation ("org.freedesktop.impl.portal.Wallpaper");
       if (tmp != NULL)
-        export_portal_implementation_async (connection,
+        export_portal_implementation_fiber (connection,
                                             wallpaper_create (connection,
                                                               access_impl->dbus_name,
                                                               tmp->dbus_name));

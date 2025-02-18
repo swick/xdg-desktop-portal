@@ -15,7 +15,8 @@
  * License along with this library. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <stdint.h>
+#include "xdp-dbus.h"
+#include "xdp-impl-dbus.h"
 
 #pragma once
 
@@ -24,6 +25,9 @@ XdpDbusImplRequest * xdp_fiber_impl_request_proxy_new (GDBusConnection  *connect
                                                        const gchar      *name,
                                                        const gchar      *object_path,
                                                        GError          **error);
+
+gboolean xdp_fiber_impl_request_close (XdpDbusImplRequest  *proxy,
+                                       GError             **error);
 
 struct _XdpFutureWallpaperSkeletonClass
 {

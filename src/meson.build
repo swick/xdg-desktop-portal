@@ -113,6 +113,7 @@ xdg_desktop_portal_sources = files(
   'xdp-permissions.c',
   'xdp-portal-impl.c',
   'xdp-request.c',
+  'xdp-request-fiber.c',
   'xdp-session.c',
   'xdp-session-persistence.c',
 )
