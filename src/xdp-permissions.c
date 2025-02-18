@@ -181,3 +181,154 @@ xdp_get_permission_store (void)
 {
   return permission_store;
 }
+
+typedef struct _XdpGetPermissionData {
+  DexPromise *promise;
+  char *app_id;
+  char *table;
+  char *id;
+} XdpGetPermissionData;
+
+static void
+xdp_get_permission_data_free (XdpGetPermissionData *data)
+{
+  dex_clear (&data->promise);
+  g_clear_pointer (&data->app_id, g_free);
+  g_clear_pointer (&data->table, g_free);
+  g_clear_pointer (&data->id, g_free);
+
+  g_free (data);
+}
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (XdpGetPermissionData, xdp_get_permission_data_free)
+
+static void
+xdp_get_permission_cb (GObject      *object,
+                       GAsyncResult *result,
+                       gpointer      user_data)
+{
+  g_autoptr(XdpGetPermissionData) data = user_data;
+  DexPromise *promise = data->promise;
+  g_autoptr(GVariant) out_perms = NULL;
+  g_autoptr(GVariant) out_data = NULL;
+  g_autoptr(GError) error = NULL;
+  g_autofree char **permissions = NULL;
+
+  if (!xdp_dbus_impl_permission_store_call_lookup_finish (permission_store,
+                                                          &out_perms,
+                                                          &out_data,
+                                                          result,
+                                                          &error))
+    {
+      g_dbus_error_strip_remote_error (error);
+      g_debug ("No '%s' permissions found: %s", data->table, error->message);
+
+      dex_promise_resolve_uint (promise, XDP_PERMISSION_UNSET);
+      return;
+    }
+
+  if (!g_variant_lookup (out_perms, data->app_id, "^a&s", &permissions))
+    {
+      g_debug ("No permissions stored for: %s %s, app %s",
+               data->table, data->id, data->app_id);
+
+      dex_promise_resolve_uint (promise, XDP_PERMISSION_UNSET);
+      return;
+    }
+
+  dex_promise_resolve_uint (promise, xdp_permissions_to_tristate (permissions));
+}
+
+DexFuture *
+xdp_future_get_permission (const char *app_id,
+                           const char *table,
+                           const char *id)
+{
+  DexPromise *promise;
+  XdpGetPermissionData *data;
+
+  promise = dex_promise_new_cancellable ();
+
+  data = g_new0 (XdpGetPermissionData, 1);
+  data->promise = dex_ref (promise);
+  data->app_id = g_strdup (app_id);
+  data->table = g_strdup (table);
+  data->id = g_strdup (id);
+
+  xdp_dbus_impl_permission_store_call_lookup (permission_store,
+                                              table,
+                                              id,
+                                              dex_promise_get_cancellable (promise),
+                                              xdp_get_permission_cb,
+                                              data);
+
+  return DEX_FUTURE (promise);
+}
+
+XdpPermission
+xdp_fiber_get_permission (const char *app_id,
+                          const char *table,
+                          const char *id)
+{
+  return dex_await_uint (xdp_future_get_permission (app_id, table, id), NULL);
+}
+
+static void
+xdp_set_permission_cb (GObject      *object,
+                       GAsyncResult *result,
+                       gpointer      user_data)
+{
+  g_autoptr(DexPromise) promise = user_data;
+  g_autoptr(GError) error = NULL;
+
+  if (xdp_dbus_impl_permission_store_call_set_permission_finish (permission_store,
+                                                                 result,
+                                                                 &error))
+    dex_promise_resolve_boolean (promise, TRUE);
+  else
+    dex_promise_reject (promise, g_steal_pointer (&error));
+}
+
+DexFuture *
+xdp_future_set_permission (const char    *app_id,
+                           const char    *table,
+                           const char    *id,
+                           XdpPermission  permission)
+{
+  DexPromise *promise;
+  g_auto(GStrv) perms = NULL;
+
+  promise = dex_promise_new_cancellable ();
+
+  perms = xdp_permissions_from_tristate (permission);
+
+  xdp_dbus_impl_permission_store_call_set_permission (permission_store,
+                                                      table,
+                                                      TRUE,
+                                                      id,
+                                                      app_id,
+                                                      (const char * const *) perms,
+                                                      dex_promise_get_cancellable (promise),
+                                                      xdp_set_permission_cb,
+                                                      promise);
+
+  return DEX_FUTURE (promise);
+}
+
+void
+xdp_fiber_set_permission (const char    *app_id,
+                          const char    *table,
+                          const char    *id,
+                          XdpPermission  permission)
+{
+  g_autoptr(GError) error = NULL;
+
+  dex_await_boolean (xdp_future_set_permission (app_id, table, id, permission),
+                     &error);
+
+  if (error)
+    {
+      g_dbus_error_strip_remote_error (error);
+      g_warning ("Error updating permission store: %s", error->message);
+    }
+}

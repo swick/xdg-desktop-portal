@@ -108,6 +108,7 @@ xdg_desktop_portal_sources = files(
   'xdp-app-launch-context.c',
   'xdp-background-monitor.c',
   'xdp-call.c',
+  'xdp-dbus-wrappers.c',
   'xdp-documents.c',
   'xdp-permissions.c',
   'xdp-portal-impl.c',
@@ -144,6 +145,7 @@ common_deps = [
   gio_dep,
   gio_unix_dep,
   json_glib_dep,
+  libdex_dep,
 ]
 
 if gudev_dep.found()

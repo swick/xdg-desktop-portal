@@ -68,6 +68,20 @@ XDP_IS_REQUEST (gpointer ptr)
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (XdpRequest, g_object_unref)
 
+typedef struct _XdpRequestFinisher XdpRequestFinisher;
+
+XdpRequestFinisher * xdp_request_finisher_new (XdpRequest *request,
+                                               guint       response,
+                                               GVariant   *results);
+
+void xdp_request_finisher_free (XdpRequestFinisher *request_finisher);
+
+void xdp_request_finisher_set_response (XdpRequestFinisher *request_finisher,
+                                        guint               response,
+                                        GVariant           *results);
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (XdpRequestFinisher, xdp_request_finisher_free)
+
 void xdp_request_init_invocation (GDBusMethodInvocation *invocation,
                                   XdpAppInfo            *app_info);
 

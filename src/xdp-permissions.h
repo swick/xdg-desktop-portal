@@ -23,6 +23,8 @@
 #pragma once
 
 #include <gio/gio.h>
+#include <libdex.h>
+
 #include "xdp-impl-dbus.h"
 
 typedef enum _XdpPermission
@@ -59,3 +61,21 @@ gboolean xdp_init_permission_store (GDBusConnection  *connection,
                                     GError          **err);
 
 XdpDbusImplPermissionStore *xdp_get_permission_store (void);
+
+DexFuture * xdp_future_get_permission (const char *app_id,
+                                       const char *table,
+                                       const char *id);
+
+XdpPermission xdp_fiber_get_permission (const char *app_id,
+                                        const char *table,
+                                        const char *id);
+
+DexFuture * xdp_future_set_permission (const char    *app_id,
+                                       const char    *table,
+                                       const char    *id,
+                                       XdpPermission  permission);
+
+void xdp_fiber_set_permission (const char    *app_id,
+                               const char    *table,
+                               const char    *id,
+                               XdpPermission  permission);
