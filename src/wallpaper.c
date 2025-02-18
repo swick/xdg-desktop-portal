@@ -86,6 +86,16 @@ static XdpOptionKey wallpaper_options[] = {
   { "set-on", G_VARIANT_TYPE_STRING, validate_set_on }
 };
 
+static gboolean
+stop (gpointer data)
+{
+  XdpFutureWallpaperSkeleton *skeleton = data;
+
+  xdp_future_wallpaper_skeleton_cancel (skeleton);
+
+  return G_SOURCE_REMOVE;
+}
+
 static void
 set_wallpaper (Wallpaper             *wallpaper,
                XdpRequestFiber       *request,
@@ -193,6 +203,8 @@ set_wallpaper (Wallpaper             *wallpaper,
                       NULL);
 
   g_debug ("Calling SetWallpaperURI with %s", uri);
+
+  g_idle_add (stop, wallpaper);
 
   if (!xdp_fiber_impl_wallpaper_set_uri (wallpaper->impl,
                                          xdp_request_fiber_get_path (request),

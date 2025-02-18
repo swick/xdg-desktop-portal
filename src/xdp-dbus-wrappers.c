@@ -185,9 +185,15 @@ xdp_fiber_impl_wallpaper_set_uri (XdpDbusImplWallpaper  *proxy,
 
 static void wallpaper_iface_init (XdpDbusWallpaperIface *iface);
 
+typedef struct _XdpFutureWallpaperSkeletonPrivate
+{
+  GCancellable *cancellable;
+} XdpFutureWallpaperSkeletonPrivate;
+
 G_DEFINE_TYPE_WITH_CODE (XdpFutureWallpaperSkeleton,
                          xdp_future_wallpaper_skeleton,
                          XDP_DBUS_TYPE_WALLPAPER_SKELETON,
+                         G_ADD_PRIVATE (XdpFutureWallpaperSkeleton)
                          G_IMPLEMENT_INTERFACE (XDP_DBUS_TYPE_WALLPAPER,
                                                 wallpaper_iface_init));
 
@@ -244,8 +250,12 @@ handle_set_wallpaper_uri (XdpDbusWallpaper      *object,
                           const char            *arg_uri,
                           GVariant              *arg_options)
 {
+  XdpFutureWallpaperSkeleton *skeleton = XDP_FUTURE_WALLPAPER_SKELETON (object);
+  XdpFutureWallpaperSkeletonPrivate *priv =
+    xdp_future_wallpaper_skeleton_get_instance_private (skeleton);
   g_autoptr(SetWallpaperUriData) data = NULL;
   g_autoptr(DexFuture) future = NULL;
+  DexFuture *cancellable;
 
   data = g_new0 (SetWallpaperUriData, 1);
   data->object = g_object_ref (object);
@@ -254,11 +264,13 @@ handle_set_wallpaper_uri (XdpDbusWallpaper      *object,
   data->arg_uri = g_strdup (arg_uri);
   data->arg_options = g_variant_ref (arg_options);
 
+  cancellable = dex_cancellable_new_from_cancellable (priv->cancellable);
   future = dex_scheduler_spawn (NULL,
                                 0,
                                 handle_set_wallpaper_uri_future,
                                 g_steal_pointer (&data),
                                 (GDestroyNotify) set_wallpaper_uri_data_free);
+  future = dex_future_all_race (future, cancellable, NULL);
   dex_future_disown (g_steal_pointer (&future));
 
   return G_DBUS_METHOD_INVOCATION_HANDLED;
@@ -314,8 +326,12 @@ handle_set_wallpaper_file (XdpDbusWallpaper      *object,
                            GVariant              *arg_fd,
                            GVariant              *arg_options)
 {
+  XdpFutureWallpaperSkeleton *skeleton = XDP_FUTURE_WALLPAPER_SKELETON (object);
+  XdpFutureWallpaperSkeletonPrivate *priv =
+    xdp_future_wallpaper_skeleton_get_instance_private (skeleton);
   g_autoptr(SetWallpaperFileData) data = NULL;
   g_autoptr(DexFuture) future = NULL;
+  DexFuture *cancellable;
 
   data = g_new0 (SetWallpaperFileData, 1);
   data->object = g_object_ref (object);
@@ -325,11 +341,13 @@ handle_set_wallpaper_file (XdpDbusWallpaper      *object,
   data->arg_fd = g_variant_ref (arg_fd);
   data->arg_options = g_variant_ref (arg_options);
 
+  cancellable = dex_cancellable_new_from_cancellable (priv->cancellable);
   future = dex_scheduler_spawn (NULL,
                                 0,
                                 handle_set_wallpaper_file_future,
                                 g_steal_pointer (&data),
                                 (GDestroyNotify) set_wallpaper_file_data_free);
+  future = dex_future_all_race (future, cancellable, NULL);
   dex_future_disown (g_steal_pointer (&future));
 
   return G_DBUS_METHOD_INVOCATION_HANDLED;
@@ -343,16 +361,45 @@ wallpaper_iface_init (XdpDbusWallpaperIface *iface)
 }
 
 static void
+xdp_future_wallpaper_skeleton_dispose (GObject *object)
+{
+  XdpFutureWallpaperSkeleton *skeleton = XDP_FUTURE_WALLPAPER_SKELETON (object);
+  XdpFutureWallpaperSkeletonPrivate *priv =
+    xdp_future_wallpaper_skeleton_get_instance_private (skeleton);
+
+  g_cancellable_cancel (priv->cancellable);
+  g_clear_object (&priv->cancellable);
+
+  G_OBJECT_CLASS (xdp_future_wallpaper_skeleton_parent_class)->dispose (object);
+}
+
+static void
 xdp_future_wallpaper_skeleton_init (XdpFutureWallpaperSkeleton *skeleton)
 {
+  XdpFutureWallpaperSkeletonPrivate *priv =
+    xdp_future_wallpaper_skeleton_get_instance_private (skeleton);
+
+  priv->cancellable = g_cancellable_new ();
 }
 
 static void
 xdp_future_wallpaper_skeleton_class_init (XdpFutureWallpaperSkeletonClass *klass)
 {
+  GObjectClass *gobject_class;
+
+  gobject_class = G_OBJECT_CLASS (klass);
+  gobject_class->dispose  = xdp_future_wallpaper_skeleton_dispose;
 }
 
+void
+xdp_future_wallpaper_skeleton_cancel (XdpFutureWallpaperSkeleton *skeleton)
+{
+  XdpFutureWallpaperSkeletonPrivate *priv =
+    xdp_future_wallpaper_skeleton_get_instance_private (skeleton);
 
+  g_cancellable_cancel (priv->cancellable);
+  g_clear_object (&priv->cancellable);
+}
 
 #define XDP_TYPE_IMPL_REQUEST_RESULT (xdp_impl_request_result_get_type())
 GType xdp_impl_request_result_get_type (void);

@@ -64,6 +64,7 @@ typedef struct _XdpFutureWallpaperInterface
                                      GVariant              *arg_options);
 } XdpFutureWallpaperInterface;
 
+void xdp_future_wallpaper_skeleton_cancel (XdpFutureWallpaperSkeleton *skeleton);
 
 gboolean xdp_fiber_impl_wallpaper_set_uri (XdpDbusImplWallpaper  *proxy,
                                            const gchar           *arg_handle,
