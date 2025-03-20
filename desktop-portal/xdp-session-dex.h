@@ -27,6 +27,8 @@ XdpAppInfo * xdp_session_dex_get_app_info (XdpSessionDex *session);
 
 const char * xdp_session_dex_get_object_path (XdpSessionDex *session);
 
+GDBusConnection * xdp_session_dex_get_connection (XdpSessionDex *session);
+
 #define XDP_TYPE_SESSION_DEX_STORE (xdp_session_dex_store_get_type ())
 G_DECLARE_FINAL_TYPE (XdpSessionDexStore,
                       xdp_session_dex_store,
@@ -46,3 +48,10 @@ gpointer xdp_session_dex_store_lookup_session (XdpSessionDexStore *store,
 
 void xdp_session_dex_store_take_session (XdpSessionDexStore *store,
                                          gpointer            session_wrapper);
+
+typedef void (*XdpSessionDexStoreFunc) (gpointer session_wrapper,
+                                        gpointer user_data);
+
+void xdp_session_dex_store_foreach (XdpSessionDexStore    *store,
+                                    XdpSessionDexStoreFunc func,
+                                    gpointer               user_data);

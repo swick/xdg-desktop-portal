@@ -510,6 +510,12 @@ xdp_session_dex_get_object_path (XdpSessionDex *session)
   return xdp_object_path_claim_get_path (session->claim);
 }
 
+GDBusConnection *
+xdp_session_dex_get_connection (XdpSessionDex *session)
+{
+  return g_dbus_interface_skeleton_get_connection (session->skeleton);
+}
+
 typedef struct _XdpSessionDexStore
 {
   GObject parent_instance;
@@ -539,8 +545,10 @@ xdp_session_dex_store_take_session (XdpSessionDexStore *store,
   g_autoptr(GObject) owned_wrapper = G_OBJECT (session_wrapper);
   XdpSessionDex *session;
 
-  session = XDP_SESSION_DEX (G_STRUCT_MEMBER_P (owned_wrapper,
-                                                store->session_offset));
+  session =
+      XDP_SESSION_DEX (G_STRUCT_MEMBER (XdpSessionDex *,
+                                        owned_wrapper,
+                                        store->session_offset));
 
   if (!session || xdp_session_dex_is_closed (session))
     return;
@@ -567,13 +575,36 @@ xdp_session_dex_store_lookup_session (XdpSessionDexStore *store,
   if (!session_wrapper)
     return NULL;
 
-  session = XDP_SESSION_DEX (G_STRUCT_MEMBER_P (session_wrapper,
-                                                store->session_offset));
+  session =
+      XDP_SESSION_DEX (G_STRUCT_MEMBER (XdpSessionDex *,
+                                        session_wrapper,
+                                        store->session_offset));
 
   if (app_info && xdp_session_dex_get_app_info (session) != app_info)
     return NULL;
 
   return session_wrapper;
+}
+
+static void
+foreach_cb (gpointer key,
+            gpointer value,
+            gpointer user_data)
+{
+  void **args = user_data;
+  XdpSessionDexStoreFunc func = args[0];
+
+  func (value, args[1]);
+}
+
+void
+xdp_session_dex_store_foreach (XdpSessionDexStore    *store,
+                               XdpSessionDexStoreFunc func,
+                               gpointer               user_data)
+{
+  void *args[2] = { func, user_data };
+
+  g_hash_table_foreach (store->sessions, foreach_cb, args);
 }
 
 static void

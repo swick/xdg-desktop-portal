@@ -44,6 +44,7 @@ portal_sources = files(
 
 portal_experimental_sources = files(
   'org.freedesktop.portal.experimental.Credential.xml',
+  'org.freedesktop.portal.experimental.Speech.xml',
 )
 
 portal_host_sources = files(

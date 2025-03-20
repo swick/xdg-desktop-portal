@@ -5,6 +5,7 @@
 
 import logging
 import os
+import shutil
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -250,6 +251,162 @@ def check_version(bus: dbus.Bus, portal_name: str, expected_version: int):
 def desktop_files_path() -> Path:
     """Returns the default path for desktop files"""
     return Path(os.environ["XDG_DATA_HOME"]) / "applications"
+
+
+class AppStore:
+    """
+    Simulates app installations in a test XDG data directory.
+
+    Manages desktop files, D-Bus service files, icons, and cache files
+    (intent.cache, mimeinfo.cache) as a real package manager would.
+    """
+
+    @dataclass
+    class _Entry:
+        app_id: str
+        name: str
+        exec_: str
+        implements: list[str]
+        mime_types: list[str]
+        icon: str | None
+        no_display: bool
+        dbus_activatable: bool
+        extra_desktop_keys: dict[str, str]
+
+    def __init__(
+        self,
+        data_home: Path | None = None,
+        dbus_service_dir: Path | None = None,
+    ):
+        self._data_home = data_home or Path(os.environ["XDG_DATA_HOME"])
+        self._dbus_service_dir = dbus_service_dir
+        self._apps: dict[str, AppStore._Entry] = {}
+
+    @property
+    def applications_dir(self) -> Path:
+        return self._data_home / "applications"
+
+    def install(
+        self,
+        app_id: str,
+        *,
+        name: str | None = None,
+        exec_: str = "/bin/true",
+        template: str | None = None,
+        implements: list[str] | None = None,
+        mime_types: list[str] | None = None,
+        icon: str | None = None,
+        no_display: bool = False,
+        dbus_activatable: bool = False,
+        extra_desktop_keys: dict[str, str] | None = None,
+    ) -> None:
+        if template:
+            template_path = (
+                Path(__file__).resolve().parent / "templates" / f"{template}.py"
+            )
+            repo_root = Path(__file__).resolve().parent.parent
+            python3 = shutil.which("python3")
+            exec_ = (
+                f"/usr/bin/env PYTHONPATH={repo_root}"
+                f" {python3} -m dbusmock -l /dev/stderr -t {template_path}"
+            )
+            dbus_activatable = True
+            no_display = True
+
+        entry = AppStore._Entry(
+            app_id=app_id,
+            name=name or app_id,
+            exec_=exec_,
+            implements=implements or [],
+            mime_types=mime_types or [],
+            icon=icon,
+            no_display=no_display,
+            dbus_activatable=dbus_activatable,
+            extra_desktop_keys=extra_desktop_keys or {},
+        )
+        self._apps[app_id] = entry
+        self._write_desktop_file(entry)
+        if dbus_activatable:
+            self._write_service_file(entry)
+        self._update_intent_cache()
+        self._update_mime_cache()
+
+    def uninstall(self, app_id: str) -> None:
+        entry = self._apps.pop(app_id, None)
+        if entry is None:
+            return
+
+        (self.applications_dir / f"{app_id}.desktop").unlink(missing_ok=True)
+
+        service_file = self._data_home / "dbus-1" / "services" / f"{app_id}.service"
+        service_file.unlink(missing_ok=True)
+
+        self._update_intent_cache()
+        self._update_mime_cache()
+
+    def _write_desktop_file(self, entry: _Entry) -> None:
+        self.applications_dir.mkdir(parents=True, exist_ok=True)
+
+        lines = [
+            "[Desktop Entry]",
+            "Type=Application",
+            f"Name={entry.name}",
+            f"Exec={entry.exec_}",
+        ]
+        if entry.no_display:
+            lines.append("NoDisplay=true")
+        if entry.dbus_activatable:
+            lines.append("DBusActivatable=true")
+        if entry.icon:
+            lines.append(f"Icon={entry.icon}")
+        if entry.implements:
+            lines.append(f"Implements={';'.join(entry.implements)};")
+        if entry.mime_types:
+            lines.append(f"MimeType={';'.join(entry.mime_types)};")
+        for key, value in entry.extra_desktop_keys.items():
+            lines.append(f"{key}={value}")
+
+        (self.applications_dir / f"{entry.app_id}.desktop").write_text(
+            "\n".join(lines) + "\n"
+        )
+
+    def _write_service_file(self, entry: _Entry) -> None:
+        content = f"[D-BUS Service]\nName={entry.app_id}\nExec={entry.exec_}\n"
+        services_dir = self._data_home / "dbus-1" / "services"
+        services_dir.mkdir(parents=True, exist_ok=True)
+        (services_dir / f"{entry.app_id}.service").write_text(content)
+        if self._dbus_service_dir:
+            (self._dbus_service_dir / f"{entry.app_id}.service").write_text(content)
+
+    def _update_intent_cache(self) -> None:
+        intents: dict[str, list[str]] = {}
+        for app_id, entry in self._apps.items():
+            for interface in entry.implements:
+                intents.setdefault(interface, []).append(f"{app_id}.desktop")
+
+        cache = self.applications_dir / "intent.cache"
+        if not intents:
+            cache.unlink(missing_ok=True)
+            return
+
+        self.applications_dir.mkdir(parents=True, exist_ok=True)
+        lines = ["[Intent Cache]"]
+        for interface, ids in sorted(intents.items()):
+            lines.append(f"{interface}={';'.join(ids)};")
+        cache.write_text("\n".join(lines) + "\n")
+
+    def _update_mime_cache(self) -> None:
+        mimes: dict[str, list[str]] = {}
+        for app_id, entry in self._apps.items():
+            for mt in entry.mime_types:
+                mimes.setdefault(mt, []).append(f"{app_id}.desktop")
+
+        cache = self.applications_dir / "mimeinfo.cache"
+        self.applications_dir.mkdir(parents=True, exist_ok=True)
+        lines = ["[MIME Cache]"]
+        for mt, ids in sorted(mimes.items()):
+            lines.append(f"{mt}={';'.join(ids)};")
+        cache.write_text("\n".join(lines) + "\n")
 
 
 @dataclass

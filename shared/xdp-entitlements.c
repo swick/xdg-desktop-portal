@@ -84,6 +84,8 @@ static const XdpEntitlementInfo xdp_entitlements[] =
     { .name = SECRET_ENTITLEMENT_NAME, .version = 1 },
   [XDP_ENTITLEMENT_SETTINGS] =
     { .name = SETTINGS_ENTITLEMENT_NAME, .version = 1 },
+  [XDP_ENTITLEMENT_SPEECH] =
+    { .name = SPEECH_ENTITLEMENT_NAME, .version = 0 },
   [XDP_ENTITLEMENT_TRASH] =
     { .name = TRASH_ENTITLEMENT_NAME, .version = 1 },
   [XDP_ENTITLEMENT_USB] =
