@@ -6,16 +6,36 @@ import tests as xdp
 
 import dbus
 import pytest
+import os
+from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 
 FILECHOOSER_RESULTS = {
-    "uris": ["file:///test.txt", "file:///example/test2.txt"],
+    "uris": ["FILLED OUT LATER"],
     "choices": [("encoding", "utf8"), ("reencode", "true"), ("third", "a")],
 }
 
 
+def assert_same_files(uris, uris_other):
+    for uri, uri_other in zip(uris, uris_other):
+        path = Path(unquote(urlparse(uri).path))
+        path_other = Path(unquote(urlparse(uri_other).path))
+        assert path.read_text() == path_other.read_text()
+
+
 @pytest.fixture
 def required_templates():
+    test_file1 = Path(os.environ["XDG_DATA_HOME"]) / "test1.txt"
+    test_file1.write_text("test1")
+    test_file2 = Path(os.environ["XDG_DATA_HOME"]) / "test2.txt"
+    test_file2.write_text("test1")
+
+    FILECHOOSER_RESULTS["uris"] = [
+        f"file://{test_file1.absolute().as_posix()}",
+        f"file://{test_file2.absolute().as_posix()}",
+    ]
+
     return {
         "filechooser": {
             "results": dbus.Dictionary(FILECHOOSER_RESULTS, signature="sv"),
@@ -52,7 +72,7 @@ class TestFilechooser:
 
         assert response
         assert response.response == 0
-        assert response.results["uris"] == FILECHOOSER_RESULTS["uris"]
+        assert_same_files(response.results["uris"], FILECHOOSER_RESULTS["uris"])
 
         # Check the impl portal was called with the right args
         method_calls = mock_intf.GetMethodCalls("OpenFile")
@@ -166,7 +186,7 @@ class TestFilechooser:
 
         assert response
         assert response.response == 0
-        assert response.results["uris"] == FILECHOOSER_RESULTS["uris"]
+        assert_same_files(response.results["uris"], FILECHOOSER_RESULTS["uris"])
 
         method_calls = mock_intf.GetMethodCalls("OpenFile")
         assert len(method_calls) == 1
@@ -235,7 +255,7 @@ class TestFilechooser:
 
         assert response
         assert response.response == 0
-        assert response.results["uris"] == FILECHOOSER_RESULTS["uris"]
+        assert_same_files(response.results["uris"], FILECHOOSER_RESULTS["uris"])
 
         method_calls = mock_intf.GetMethodCalls("OpenFile")
         assert len(method_calls) == 1
@@ -264,7 +284,7 @@ class TestFilechooser:
 
         assert response
         assert response.response == 0
-        assert response.results["uris"] == FILECHOOSER_RESULTS["uris"]
+        assert_same_files(response.results["uris"], FILECHOOSER_RESULTS["uris"])
 
         method_calls = mock_intf.GetMethodCalls("OpenFile")
         assert len(method_calls) == 1
@@ -374,7 +394,7 @@ class TestFilechooser:
 
         assert response
         assert response.response == 0
-        assert response.results["uris"] == FILECHOOSER_RESULTS["uris"]
+        assert_same_files(response.results["uris"], FILECHOOSER_RESULTS["uris"])
 
         method_calls = mock_intf.GetMethodCalls("OpenFile")
         assert len(method_calls) == 1
@@ -453,7 +473,7 @@ class TestFilechooser:
 
         assert response
         assert response.response == 0
-        assert response.results["uris"] == FILECHOOSER_RESULTS["uris"]
+        assert_same_files(response.results["uris"], FILECHOOSER_RESULTS["uris"])
 
         # Check the impl portal was called with the right args
         method_calls = mock_intf.GetMethodCalls("SaveFile")
@@ -567,7 +587,7 @@ class TestFilechooser:
 
         assert response
         assert response.response == 0
-        assert response.results["uris"] == FILECHOOSER_RESULTS["uris"]
+        assert_same_files(response.results["uris"], FILECHOOSER_RESULTS["uris"])
 
         # Check the impl portal was called with the right args
         method_calls = mock_intf.GetMethodCalls("SaveFile")
