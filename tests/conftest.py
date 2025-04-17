@@ -543,6 +543,17 @@ def xdg_document_portal(
     returncode = document_portal.wait()
     assert returncode == 0
 
+    fuse_mount = Path(os.environ["XDG_RUNTIME_DIR"]) / "doc"
+
+    def unmounted():
+        try:
+            next(fuse_mount.iterdir())
+        except StopIteration:
+            return True
+        return False
+
+    xdp.wait_for(unmounted)
+
 
 @pytest.fixture
 def portals(templates: Any, xdg_desktop_portal: Any, xdg_permission_store: Any) -> None:
