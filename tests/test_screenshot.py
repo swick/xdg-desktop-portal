@@ -7,6 +7,9 @@ import tests as xdp
 import dbus
 import pytest
 from typing import Any
+import os
+from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 
 SCREENSHOT_DATA = dbus.Dictionary(
@@ -20,6 +23,10 @@ SCREENSHOT_DATA = dbus.Dictionary(
 
 @pytest.fixture
 def required_templates():
+    image = Path(os.environ["XDG_DATA_HOME"]) / "screenshot-image.png"
+    image.write_text("image contents")
+    SCREENSHOT_DATA["uri"] = f"file://{image.absolute().as_posix()}"
+
     return {
         "access": {},
         "screenshot": {
@@ -54,7 +61,10 @@ class TestScreenshot:
 
         assert response
         assert response.response == 0
-        assert response.results["uri"] == SCREENSHOT_DATA["uri"]
+
+        orig = Path(unquote(urlparse(SCREENSHOT_DATA["uri"]).path))
+        path = Path(unquote(urlparse(response.results["uri"]).path))
+        assert orig.read_text() == path.read_text()
 
         # Check the impl portal was called with the right args
         method_calls = mock_intf.GetMethodCalls("Screenshot")
