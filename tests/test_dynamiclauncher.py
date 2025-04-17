@@ -74,12 +74,20 @@ class TestDynamicLauncher:
         assert not args[5]["modal"]
 
         desktop_file_name = app_id + ".ExampleApp.desktop"
-        dynlauncher_intf.Install(
-            token,
-            desktop_file_name,
-            DESKTOP_FILE,
-            {},
-        )
+
+        try:
+            dynlauncher_intf.Install(
+                token,
+                desktop_file_name,
+                DESKTOP_FILE,
+                {},
+            )
+        except dbus.exceptions.DBusException as e:
+            # Unsupported on snap
+            assert xdp_app_info.kind == xdp.AppInfoKind.SNAP
+            e.get_dbus_name() == "org.freedesktop.portal.Error.InvalidArgument"
+            return
+        assert xdp_app_info.kind != xdp.AppInfoKind.SNAP
 
         file = Path(os.environ["XDG_DATA_HOME"]) / "applications" / desktop_file_name
         assert file.exists()
