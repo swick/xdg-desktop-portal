@@ -28,7 +28,10 @@ class TestFilechooser:
     def test_version(self, portals, dbus_con):
         xdp.check_version(dbus_con, "FileChooser", 4)
 
-    def test_open_file_basic(self, portals, dbus_con, app_id):
+    def test_open_file_basic(
+        self, xdg_document_portal, portals, dbus_con, xdp_app_info
+    ):
+        app_id = xdp_app_info.app_id
         filechooser_intf = xdp.get_portal_iface(dbus_con, "FileChooser")
         mock_intf = xdp.get_mock_iface(dbus_con)
 
@@ -62,7 +65,8 @@ class TestFilechooser:
         assert args[4]["multiple"] == multiple
 
     @pytest.mark.parametrize("template_params", ({"filechooser": {"response": 1}},))
-    def test_open_file_cancel(self, portals, dbus_con, app_id):
+    def test_open_file_cancel(self, portals, dbus_con, xdp_app_info):
+        app_id = xdp_app_info.app_id
         filechooser_intf = xdp.get_portal_iface(dbus_con, "FileChooser")
         mock_intf = xdp.get_mock_iface(dbus_con)
 
@@ -97,7 +101,8 @@ class TestFilechooser:
     @pytest.mark.parametrize(
         "template_params", ({"filechooser": {"expect-close": True}},)
     )
-    def test_open_file_close(self, portals, dbus_con, app_id):
+    def test_open_file_close(self, portals, dbus_con, xdp_app_info):
+        app_id = xdp_app_info.app_id
         filechooser_intf = xdp.get_portal_iface(dbus_con, "FileChooser")
         mock_intf = xdp.get_mock_iface(dbus_con)
 
@@ -426,7 +431,8 @@ class TestFilechooser:
                 == "org.freedesktop.portal.Error.InvalidArgument"
             )
 
-    def test_save_file_basic(self, portals, dbus_con, app_id):
+    def test_save_file_basic(self, portals, dbus_con, xdp_app_info):
+        app_id = xdp_app_info.app_id
         filechooser_intf = xdp.get_portal_iface(dbus_con, "FileChooser")
         mock_intf = xdp.get_mock_iface(dbus_con)
 
@@ -460,7 +466,8 @@ class TestFilechooser:
         assert args[4]["current_name"] == current_name
 
     @pytest.mark.parametrize("template_params", ({"filechooser": {"response": 1}},))
-    def test_save_file_cancel(self, portals, dbus_con, app_id):
+    def test_save_file_cancel(self, portals, dbus_con, xdp_app_info):
+        app_id = xdp_app_info.app_id
         filechooser_intf = xdp.get_portal_iface(dbus_con, "FileChooser")
         mock_intf = xdp.get_mock_iface(dbus_con)
 
@@ -495,7 +502,8 @@ class TestFilechooser:
     @pytest.mark.parametrize(
         "template_params", ({"filechooser": {"expect-close": True}},)
     )
-    def test_save_file_close(self, portals, dbus_con, app_id):
+    def test_save_file_close(self, portals, dbus_con, xdp_app_info):
+        app_id = xdp_app_info.app_id
         filechooser_intf = xdp.get_portal_iface(dbus_con, "FileChooser")
         mock_intf = xdp.get_mock_iface(dbus_con)
 
@@ -528,7 +536,7 @@ class TestFilechooser:
         assert args[4]["accept_label"] == accept_label
         assert args[4]["current_name"] == current_name
 
-    def test_save_file_filters(self, portals, dbus_con, app_id):
+    def test_save_file_filters(self, portals, dbus_con):
         filechooser_intf = xdp.get_portal_iface(dbus_con, "FileChooser")
         mock_intf = xdp.get_mock_iface(dbus_con)
 
@@ -570,7 +578,7 @@ class TestFilechooser:
     @pytest.mark.parametrize(
         "template_params", ({"lockdown": {"disable-save-to-disk": True}},)
     )
-    def test_save_file_lockdown(self, portals, dbus_con, app_id):
+    def test_save_file_lockdown(self, portals, dbus_con):
         filechooser_intf = xdp.get_portal_iface(dbus_con, "FileChooser")
         mock_intf = xdp.get_mock_iface(dbus_con)
 
