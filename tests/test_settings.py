@@ -90,135 +90,111 @@ def required_templates():
     }
 
 
-PORTAL_CONFIG_FILES = {
-    "test1.portal": b"""
-[portal]
-DBusName=org.freedesktop.impl.portal.Test1
-Interfaces=org.freedesktop.impl.portal.Settings;
-""",
-    "test2.portal": b"""
-[portal]
-DBusName=org.freedesktop.impl.portal.Test2
-Interfaces=org.freedesktop.impl.portal.Settings;
-""",
-    "test_bad.portal": b"""
-[portal]
-DBusName=org.freedesktop.impl.portal.TestBad
-Interfaces=org.freedesktop.impl.portal.Settings;
-""",
-    "test_noimpl.portal": b"""
-[portal]
-DBusName=org.freedesktop.impl.portal.TestBad
-Interfaces=org.freedesktop.impl.portal.NonExistant;
-""",
+PORTAL_CONFIGS = {
+    "test1": xdp.PortalConfig.Portal(
+        dbus_name="org.freedesktop.impl.portal.Test1",
+        interfaces=["org.freedesktop.impl.portal.Settings"],
+    ),
+    "test2": xdp.PortalConfig.Portal(
+        dbus_name="org.freedesktop.impl.portal.Test2",
+        interfaces=["org.freedesktop.impl.portal.Settings"],
+    ),
+    "test_bad": xdp.PortalConfig.Portal(
+        dbus_name="org.freedesktop.impl.portal.TestBad",
+        interfaces=["org.freedesktop.impl.portal.Settings"],
+    ),
+    "test_noimpl.portal": xdp.PortalConfig.Portal(
+        dbus_name="org.freedesktop.impl.portal.TestBad",
+        interfaces=["org.freedesktop.impl.portal.NonExistant"],
+    ),
 }
+
+
+def make_config(conf, exclude=[]):
+    portals = PORTAL_CONFIGS.copy()
+    for e in exclude:
+        del portals[e]
+
+    return xdp.PortalConfig(
+        config=xdp.PortalConfig.Config(preferred=conf),
+        portals=portals,
+    )
 
 
 def portal_config_good():
     # test1 merged with test2 should result in the correct output
-    files = PORTAL_CONFIG_FILES.copy()
-    files["test-portals.conf"] = b"""
-[preferred]
-default=test1;test2;
-"""
-    yield files
+    yield make_config({"default": "test1;test2;"})
 
     # a portal without the settings impl does not affect the result
-    files = PORTAL_CONFIG_FILES.copy()
-    files["test-portals.conf"] = b"""
-[preferred]
-default=test1;test_noimpl;test2;
-"""
-    yield files
+    yield make_config({"default": "test1;test_noimpl;test2;"})
 
     # the default should be ignored when the interface is configured
-    files = PORTAL_CONFIG_FILES.copy()
-    files["test-portals.conf"] = b"""
-[preferred]
-default=test_bad;
-org.freedesktop.impl.portal.Settings=test1;test2
-"""
-    yield files
+    yield make_config(
+        {
+            "default": "test_bad;",
+            "org.freedesktop.impl.portal.Settings": "test1;test2",
+        }
+    )
 
     # use * which should expand to test1;test2;test_noimpl
-    files = PORTAL_CONFIG_FILES.copy()
-    del files["test_bad.portal"]
-    files["test-portals.conf"] = b"""
-[preferred]
-default=test_noimpl;
-org.freedesktop.impl.portal.Settings=*;
-"""
-    yield files
+    yield make_config(
+        {
+            "default": "test_noimpl;",
+            "org.freedesktop.impl.portal.Settings": "*;",
+        },
+        exclude=["test_bad"],
+    )
 
 
 def portal_config_bad():
     # test1 alone should result in bad output
-    files = PORTAL_CONFIG_FILES.copy()
-    files["test-portals.conf"] = b"""
-[preferred]
-default=test1;
-"""
-    yield files
+    yield make_config({"default": "test1;"})
 
     # test2 merged with test1 is the wrong order
-    files = PORTAL_CONFIG_FILES.copy()
-    files["test-portals.conf"] = b"""
-[preferred]
-default=test2;test1;
-"""
-    yield files
+    yield make_config({"default": "test2;test1;"})
 
     # test_noimpl does not affect anything
-    files = PORTAL_CONFIG_FILES.copy()
-    files["test-portals.conf"] = b"""
-[preferred]
-default=test_noimpl;test2;test1;
-"""
-    yield files
+    yield make_config({"default": "test_noimpl;test2;test1;"})
 
     # default should get ignored, test2 alone should result in bad output
-    files = PORTAL_CONFIG_FILES.copy()
-    files["test-portals.conf"] = b"""
-[preferred]
-default=test1;test2
-org.freedesktop.impl.portal.Settings=test2;test_noimpl
-"""
-    yield files
+    yield make_config(
+        {
+            "default": "test1;test2;",
+            "org.freedesktop.impl.portal.Settings": "test2;test_noimpl",
+        }
+    )
 
     # test_bad anywhere in the active config should result in bad output
-    files = PORTAL_CONFIG_FILES.copy()
-    files["test-portals.conf"] = b"""
-[preferred]
-default=test1;test2
-org.freedesktop.impl.portal.Settings=test_bad;test1;test2
-"""
-    yield files
+    yield make_config(
+        {
+            "default": "test1;test2;",
+            "org.freedesktop.impl.portal.Settings": "test_bad;test1;test2",
+        }
+    )
 
     # use * which expands to test1;test2;test_bad;test_no_impl
     # contains test_bad which should result in bad output
-    files = PORTAL_CONFIG_FILES.copy()
-    files["test-portals.conf"] = b"""
-[preferred]
-default=test_noimpl;
-org.freedesktop.impl.portal.Settings=*;
-"""
-    yield files
+    yield make_config(
+        {
+            "default": "test_noimpl;",
+            "org.freedesktop.impl.portal.Settings": "*;",
+        }
+    )
 
 
 def portal_config_twice():
     # check that test1 gets picked up only once
-    files = PORTAL_CONFIG_FILES.copy()
-    del files["test_bad.portal"]
-    files["test-portals.conf"] = b"""
-[preferred]
-default=test_noimpl;
-org.freedesktop.impl.portal.Settings=test1;*;
-"""
-    yield files
+    yield make_config(
+        {
+            "default": "test_noimpl;",
+            "org.freedesktop.impl.portal.Settings": "test1;*;",
+        },
+        exclude=["test_bad"],
+    )
 
 
 @pytest.fixture
-def xdg_desktop_portal_dir_default_files():
+def xdp_portal_config():
     return next(portal_config_good())
 
 
@@ -226,10 +202,7 @@ class TestSettings:
     def test_version(self, portals, dbus_con):
         xdp.check_version(dbus_con, "Settings", 2)
 
-    @pytest.mark.parametrize(
-        "xdg_desktop_portal_dir_default_files",
-        portal_config_good(),
-    )
+    @pytest.mark.parametrize("xdp_portal_config", portal_config_good())
     def test_read_all(self, portals, dbus_con):
         settings_intf = xdp.get_portal_iface(dbus_con, "Settings")
 
@@ -261,20 +234,14 @@ class TestSettings:
             == SETTINGS_DATA["org.freedesktop.appearance"]
         )
 
-    @pytest.mark.parametrize(
-        "xdg_desktop_portal_dir_default_files",
-        portal_config_bad(),
-    )
+    @pytest.mark.parametrize("xdp_portal_config", portal_config_bad())
     def test_read_all_bad_config(self, portals, dbus_con):
         settings_intf = xdp.get_portal_iface(dbus_con, "Settings")
 
         value = settings_intf.ReadAll([])
         assert value != SETTINGS_DATA
 
-    @pytest.mark.parametrize(
-        "xdg_desktop_portal_dir_default_files",
-        portal_config_twice(),
-    )
+    @pytest.mark.parametrize("xdp_portal_config", portal_config_twice())
     def test_config_twice(self, portals, dbus_con):
         settings_intf = xdp.get_portal_iface(dbus_con, "Settings")
         mock_intf = xdp.get_mock_iface(dbus_con, "org.freedesktop.impl.portal.Test1")

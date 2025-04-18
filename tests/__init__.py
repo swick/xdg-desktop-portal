@@ -223,6 +223,66 @@ def check_version(bus: dbus.Bus, portal_name: str, expected_version: int):
         assert e is None, str(e)
 
 
+@dataclass
+class File:
+    path: Path
+    content: bytes
+
+    def abs_path(self):
+        return self.path.absolute().as_posix()
+
+    def create(self):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_bytes(self.content)
+
+
+@dataclass
+class PortalConfig:
+    @dataclass
+    class Config:
+        preferred: dict[str, str] = field(default_factory=dict)
+
+        def encode(self) -> bytes:
+            content = "[preferred]\n"
+            for k, v in self.preferred.items():
+                content += f"{k}={v}\n"
+            return content.encode("utf-8")
+
+    @dataclass
+    class Portal:
+        dbus_name: str
+        interfaces: list[str]
+
+        def encode(self) -> bytes:
+            interfaces = ";".join(self.interfaces)
+            content = "[portal]\n"
+            content += f"DBusName={self.dbus_name}\n"
+            content += f"Interfaces={interfaces}\n"
+            return content.encode("utf-8")
+
+    config: Config
+    portals: dict[str, Portal] = field(default_factory=dict)
+
+    def files(self) -> list[File]:
+        files = []
+        portal_dir = Path(os.environ["XDG_DESKTOP_PORTAL_DIR"])
+
+        for name, portal in self.portals.items():
+            f = File(
+                path=(portal_dir / f"{name}.portal"),
+                content=portal.encode(),
+            )
+            files.append(f)
+
+        files.append(
+            File(
+                path=(portal_dir / "test-portals.conf"),
+                content=self.config.encode(),
+            )
+        )
+        return files
+
+
 class AppInfoKind(Enum):
     HOST = 1
     FLATPAK = 2
@@ -232,8 +292,8 @@ class AppInfoKind(Enum):
 @dataclass
 class AppInfo:
     """
-    Interacts with conftest.py via ensure_files and extend_env to make the
-    portal frontend discover the requested XdpAppInfo for incoming connections.
+    Used to describe the app that the portal is detecting, as well as the
+    required files and environment variables for the portal to pick it up.
 
     Testing code can use this class to construct a specific XdpAppInfo for the
     xdp_app_info fixture.
@@ -243,16 +303,7 @@ class AppInfo:
     app_id: str
     desktop_file: str
     env: dict[str, str] = field(default_factory=dict)
-    files: dict[Path, bytes] = field(default_factory=dict)
-
-    def ensure_files(self) -> None:
-        for path, content in self.files.items():
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(content)
-
-    def extend_env(self, env: dict[str, str]) -> None:
-        for key, val in self.env.items():
-            env[key] = val
+    files: list[File] = field(default_factory=list)
 
     @classmethod
     def new_host(
@@ -266,13 +317,17 @@ class AppInfo:
             "XDG_DESKTOP_PORTAL_TEST_APP_INFO_KIND": "host",
             "XDG_DESKTOP_PORTAL_TEST_HOST_APPID": app_id,
         }
-        files = {}
+        files = []
 
         if desktop_entry:
-            desktop_entry_path = (
-                Path(os.environ["XDG_DATA_HOME"]) / "applications" / f"{app_id}.desktop"
+            files.append(
+                File(
+                    path=Path(os.environ["XDG_DATA_HOME"])
+                    / "applications"
+                    / f"{app_id}.desktop",
+                    content=desktop_entry,
+                )
             )
-            files[desktop_entry_path] = desktop_entry
 
         return cls(
             kind=kind,
@@ -296,7 +351,7 @@ class AppInfo:
         env = {
             "XDG_DESKTOP_PORTAL_TEST_APP_INFO_KIND": "flatpak",
         }
-        files = {}
+        files = []
 
         if not instance_id:
             instance_id = "1234567890"
@@ -310,11 +365,14 @@ Exec=true %u
 Type=Application
 """
 
-        desktop_entry_path = (
-            Path(os.environ["XDG_DATA_HOME"]) / "applications" / f"{app_id}.desktop"
+        files.append(
+            File(
+                path=Path(os.environ["XDG_DATA_HOME"])
+                / "applications"
+                / f"{app_id}.desktop",
+                content=desktop_entry,
+            )
         )
-
-        files[desktop_entry_path] = desktop_entry
 
         if not metadata:
             metadata_str = f"""
@@ -341,12 +399,12 @@ enumerable-devices={usb_queries}
 """
             metadata += metadata_usb_str.encode("utf8")
 
-        metadata_path = Path(os.environ["TMPDIR"]) / "flatpak-metadata"
-
-        files[metadata_path] = metadata
-        env["XDG_DESKTOP_PORTAL_TEST_FLATPAK_METADATA"] = (
-            metadata_path.absolute().as_posix()
+        metadata_file = File(
+            path=Path(os.environ["TMPDIR"]) / "flatpak-metadata",
+            content=metadata,
         )
+        env["XDG_DESKTOP_PORTAL_TEST_FLATPAK_METADATA"] = metadata_file.abs_path()
+        files.append(metadata_file)
 
         return cls(
             kind=kind,
@@ -369,7 +427,7 @@ enumerable-devices={usb_queries}
         env = {
             "XDG_DESKTOP_PORTAL_TEST_APP_INFO_KIND": "snap",
         }
-        files = {}
+        files = []
 
         if not desktop_entry:
             desktop_entry = b"""
@@ -380,11 +438,12 @@ Exec=true %u
 Type=Application
 """
 
-        desktop_entry_path = (
-            Path(os.environ["XDG_DATA_HOME"]) / "applications" / desktop_file
+        files.append(
+            File(
+                path=Path(os.environ["XDG_DATA_HOME"]) / "applications" / desktop_file,
+                content=desktop_entry,
+            )
         )
-
-        files[desktop_entry_path] = desktop_entry
 
         if not metadata:
             metadata_str = f"""
@@ -394,12 +453,13 @@ DesktopFile={desktop_file}
 """
             metadata = metadata_str.encode("UTF-8")
 
-        metadata_path = Path(os.environ["TMPDIR"]) / "snap-metadata"
-
-        files[metadata_path] = metadata
-        env["XDG_DESKTOP_PORTAL_TEST_SNAP_METADATA"] = (
-            metadata_path.absolute().as_posix()
+        metadata_file = File(
+            path=Path(os.environ["TMPDIR"]) / "snap-metadata",
+            content=metadata,
         )
+
+        env["XDG_DESKTOP_PORTAL_TEST_SNAP_METADATA"] = metadata_file.abs_path()
+        files.append(metadata_file)
 
         return cls(
             kind=kind,

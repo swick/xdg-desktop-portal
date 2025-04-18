@@ -70,25 +70,27 @@ def test_dir() -> Path:
     return Path(__file__).resolve().parent
 
 
-@pytest.fixture
-def xdg_desktop_portal_path() -> Path:
-    return Path(os.environ["XDG_DESKTOP_PORTAL_PATH"])
-
-
-@pytest.fixture
-def xdg_permission_store_path() -> Path:
-    return Path(os.environ["XDG_PERMISSION_STORE_PATH"])
-
-
-@pytest.fixture
-def xdg_document_portal_path() -> Path:
-    return Path(os.environ["XDG_DOCUMENT_PORTAL_PATH"])
-
-
 @pytest.fixture(autouse=True)
-def create_test_dirs(umockdev: Optional[UMockdev.Testbed]) -> Iterator[None]:
+def ensure_filesystem(
+    ensure_test_dirs,
+    xdp_portal_config,
+    xdp_app_info,
+    xdp_test_files,
+) -> None:
+    files = []
+    files += xdp_app_info.files
+    files += xdp_portal_config.files()
+    files += xdp_test_files
+
+    for file in files:
+        file.create()
+
+
+@pytest.fixture
+def ensure_test_dirs(umockdev: Optional[UMockdev.Testbed]) -> Iterator[None]:
     # The umockdev argument is to make sure the testbed
     # is created before we create the tmpdir
+
     env_dirs = [
         "HOME",
         "TMPDIR",
@@ -114,6 +116,50 @@ def create_test_dirs(umockdev: Optional[UMockdev.Testbed]) -> Iterator[None]:
 
 
 @pytest.fixture
+def xdp_portal_config() -> xdp.PortalConfig:
+    """
+    Default fixture for creating a portal configuration that will be used
+    when xdg-desktop-portal is started.
+    """
+
+    test_portal = xdp.PortalConfig.Portal(
+        dbus_name="org.freedesktop.impl.portal.Test",
+        interfaces=[
+            "org.freedesktop.impl.portal.Access",
+            "org.freedesktop.impl.portal.Account",
+            "org.freedesktop.impl.portal.AppChooser",
+            "org.freedesktop.impl.portal.Background",
+            "org.freedesktop.impl.portal.Clipboard",
+            "org.freedesktop.impl.portal.DynamicLauncher",
+            "org.freedesktop.impl.portal.Email",
+            "org.freedesktop.impl.portal.FileChooser",
+            "org.freedesktop.impl.portal.GlobalShortcuts",
+            "org.freedesktop.impl.portal.Inhibit",
+            "org.freedesktop.impl.portal.InputCapture",
+            "org.freedesktop.impl.portal.Lockdown",
+            "org.freedesktop.impl.portal.Notification",
+            "org.freedesktop.impl.portal.Print",
+            "org.freedesktop.impl.portal.RemoteDesktop",
+            "org.freedesktop.impl.portal.Screenshot",
+            "org.freedesktop.impl.portal.Settings",
+            "org.freedesktop.impl.portal.Usb",
+            "org.freedesktop.impl.portal.Wallpaper",
+        ],
+    )
+
+    return xdp.PortalConfig(
+        config=xdp.PortalConfig.Config(
+            preferred={
+                "default": "test;",
+            }
+        ),
+        portals={
+            "test": test_portal,
+        },
+    )
+
+
+@pytest.fixture
 def xdg_data_home_files() -> Dict[str, bytes]:
     """
     Default fixture which can be used to create files in the temporary
@@ -122,79 +168,15 @@ def xdg_data_home_files() -> Dict[str, bytes]:
     return {}
 
 
-@pytest.fixture(autouse=True)
-def ensure_xdg_data_home(
-    create_test_dirs: Any, xdg_data_home_files: Dict[str, bytes]
-) -> None:
-    files = xdg_data_home_files
-    for name, content in files.items():
-        file_path = Path(os.environ["XDG_DATA_HOME"]) / name
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(file_path.absolute().as_posix(), "wb") as f:
-            f.write(content)
-
-
 @pytest.fixture
-def xdg_desktop_portal_dir_files() -> Dict[str, bytes]:
-    """
-    Default fixture which can be used to create files in the temporary
-    XDG_DESKTOP_PORTAL_DIR directory of the test.
-    """
-    return {}
-
-
-@pytest.fixture
-def xdg_desktop_portal_dir_default_files() -> Dict[str, bytes]:
-    files = {}
-
-    portals = [
-        "org.freedesktop.impl.portal.Access",
-        "org.freedesktop.impl.portal.Account",
-        "org.freedesktop.impl.portal.AppChooser",
-        "org.freedesktop.impl.portal.Background",
-        "org.freedesktop.impl.portal.Clipboard",
-        "org.freedesktop.impl.portal.DynamicLauncher",
-        "org.freedesktop.impl.portal.Email",
-        "org.freedesktop.impl.portal.FileChooser",
-        "org.freedesktop.impl.portal.GlobalShortcuts",
-        "org.freedesktop.impl.portal.Inhibit",
-        "org.freedesktop.impl.portal.InputCapture",
-        "org.freedesktop.impl.portal.Lockdown",
-        "org.freedesktop.impl.portal.Notification",
-        "org.freedesktop.impl.portal.Print",
-        "org.freedesktop.impl.portal.RemoteDesktop",
-        "org.freedesktop.impl.portal.Screenshot",
-        "org.freedesktop.impl.portal.Settings",
-        "org.freedesktop.impl.portal.Usb",
-        "org.freedesktop.impl.portal.Wallpaper",
+def xdp_test_files(xdg_data_home_files) -> list[xdp.File]:
+    return [
+        xdp.File(
+            path=Path(os.environ["XDG_DATA_HOME"]) / name,
+            content=content,
+        )
+        for name, content in xdg_data_home_files.items()
     ]
-
-    files["test-portals.conf"] = b"""
-[preferred]
-default=test;
-"""
-
-    files["test.portal"] = """
-[portal]
-DBusName=org.freedesktop.impl.portal.Test
-Interfaces={}
-""".format(";".join(portals)).encode("utf-8")
-
-    return files
-
-
-@pytest.fixture(autouse=True)
-def ensure_xdg_desktop_portal_dir(
-    create_test_dirs: Any,
-    xdg_desktop_portal_dir_files: Dict[str, bytes],
-    xdg_desktop_portal_dir_default_files: Dict[str, bytes],
-) -> None:
-    files = xdg_desktop_portal_dir_default_files | xdg_desktop_portal_dir_files
-    for name, content in files.items():
-        file_path = Path(os.environ["XDG_DESKTOP_PORTAL_DIR"]) / name
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(file_path.absolute().as_posix(), "wb") as f:
-            f.write(content)
 
 
 @pytest.fixture(autouse=True)
@@ -386,15 +368,6 @@ def templates(
     _terminate_servers(busses)
 
 
-@pytest.fixture
-def xdp_overwrite_env() -> dict[str, str]:
-    """
-    Default fixture which can be used to override the environment that gets
-    passed to xdg-desktop-portal, xdg-document-portal and xdg-permission-store.
-    """
-    return {}
-
-
 @pytest.fixture(
     params=[xdp.AppInfoKind.HOST, xdp.AppInfoKind.FLATPAK, xdp.AppInfoKind.SNAP]
 )
@@ -427,14 +400,8 @@ def xdp_app_info(request) -> xdp.AppInfo:
     assert_never(app_info_kind)
 
 
-@pytest.fixture(autouse=True)
-def ensure_xdp_app_info_files(create_test_dirs, xdp_app_info) -> None:
-    xdp_app_info.ensure_files()
-
-
 @pytest.fixture
 def xdp_env(
-    xdp_overwrite_env: dict[str, str],
     xdp_app_info: xdp.AppInfo,
     umockdev: Optional[UMockdev.Testbed],
 ) -> dict[str, str]:
@@ -442,8 +409,8 @@ def xdp_env(
     env["G_DEBUG"] = "fatal-criticals"
     env["XDG_CURRENT_DESKTOP"] = "test"
 
-    if xdp_app_info:
-        xdp_app_info.extend_env(env)
+    for key, val in (xdp_app_info.env or {}).items():
+        env[key] = val
 
     if umockdev:
         env["UMOCKDEV_DIR"] = umockdev.get_root_dir()
@@ -452,9 +419,6 @@ def xdp_env(
     if not asan_suppression.exists():
         raise FileNotFoundError(f"{asan_suppression} does not exist")
     env["LSAN_OPTIONS"] = f"suppressions={asan_suppression}"
-
-    for key, val in xdp_overwrite_env.items():
-        env[key] = val
 
     return env
 
@@ -474,6 +438,11 @@ def _maybe_add_asan_preload(executable: Path, env: dict[str, str]) -> None:
 
     preload = env.get("LD_PRELOAD", "")
     env["LD_PRELOAD"] = f"{libasan}:{preload}"
+
+
+@pytest.fixture
+def xdg_desktop_portal_path() -> Path:
+    return Path(os.environ["XDG_DESKTOP_PORTAL_PATH"])
 
 
 @pytest.fixture
@@ -507,6 +476,11 @@ def xdg_desktop_portal(
 
 
 @pytest.fixture
+def xdg_permission_store_path() -> Path:
+    return Path(os.environ["XDG_PERMISSION_STORE_PATH"])
+
+
+@pytest.fixture
 def xdg_permission_store(
     dbus_con: dbus.Bus, xdg_permission_store_path: Path, xdp_env: dict[str, str]
 ) -> Iterator[subprocess.Popen]:
@@ -536,6 +510,11 @@ def xdg_permission_store(
     # The permission store does not shut down cleanly currently
     # returncode = permission_store.wait()
     # assert returncode == 0
+
+
+@pytest.fixture
+def xdg_document_portal_path() -> Path:
+    return Path(os.environ["XDG_DOCUMENT_PORTAL_PATH"])
 
 
 @pytest.fixture

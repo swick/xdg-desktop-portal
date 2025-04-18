@@ -11,12 +11,12 @@ from pathlib import Path
 from typing import Any
 
 
-defaults_list = b"""[Default Applications]
+DEFAULTS_LIST = b"""[Default Applications]
 x-scheme-handler/http=furrfix.desktop;
 text/plain=furrfix.desktop
 """
 
-furrfix_desktop = b"""[Desktop Entry]
+FURRFIX_DESKTOP = b"""[Desktop Entry]
 Version=1.0
 Name=Furrfix
 GenericName=Not a Web Browser
@@ -31,7 +31,7 @@ Categories=Network;WebBrowser;
 Keywords=web;browser;internet;
 """
 
-mimeinfo_cache = b"""[MIME Cache]
+MIMEINFO_CACHE = b"""[MIME Cache]
 application/vnd.mozilla.xul+xml=furrfix.desktop;
 application/xhtml+xml=furrfix.desktop;
 text/plain=furrfix.desktop;
@@ -47,9 +47,9 @@ x-scheme-handler/xdg-desktop-portal-test=furrfix.desktop;
 @pytest.fixture
 def xdg_data_home_files():
     return {
-        "applications/defaults.list": defaults_list,
-        "applications/furrfix.desktop": furrfix_desktop,
-        "applications/mimeinfo.cache": mimeinfo_cache,
+        "applications/defaults.list": DEFAULTS_LIST,
+        "applications/furrfix.desktop": FURRFIX_DESKTOP,
+        "applications/mimeinfo.cache": MIMEINFO_CACHE,
     }
 
 
