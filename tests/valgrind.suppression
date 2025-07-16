@@ -1,0 +1,42 @@
+{
+  pw/context_load_module
+  Memcheck:Leak
+  fun:*alloc
+  ...
+  fun:pw_context_load_module
+}
+
+{
+  xdp/notification_init
+  Memcheck:Leak
+  fun:*alloc
+  ...
+  fun:notification_init
+}
+
+{
+  xdp/dynamic_launcher_init
+  Memcheck:Leak
+  fun:*alloc
+  ...
+  fun:dynamic_launcher_init
+}
+
+# FIXME: fix in code instead
+{
+  xdp/proxy_resolver_init
+  Memcheck:Leak
+  fun:*alloc
+  ...
+  fun:proxy_resolver_init
+}
+
+# FIXME: make this tighter
+{
+  glib/thread_new
+  Memcheck:Leak
+  fun:*alloc
+  ...
+  fun:g_thread_new_internal
+}
+

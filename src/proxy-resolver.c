@@ -97,6 +97,7 @@ static void
 proxy_resolver_init (ProxyResolver *resolver)
 {
   resolver->resolver = g_proxy_resolver_get_default ();
+  // FIXME: unref in dispose
 
   xdp_dbus_proxy_resolver_set_version (XDP_DBUS_PROXY_RESOLVER (resolver), 1);
 }

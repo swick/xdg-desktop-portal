@@ -5,6 +5,8 @@
 from typing import Any, Dict, Iterator, Optional
 from types import ModuleType
 
+import tests.xdp_utils as xdp
+
 import pytest
 import dbus
 import dbusmock
@@ -14,6 +16,7 @@ import tempfile
 import subprocess
 import time
 import signal
+import pkgconfig
 from pathlib import Path
 from contextlib import chdir
 
@@ -451,8 +454,35 @@ def _maybe_add_asan_preload(executable: Path, env: dict[str, str]) -> None:
 
 
 @pytest.fixture
+def xdp_valgrind_args() -> list[str]:
+    if not xdp.is_valgrind():
+        return []
+
+    xdp_suppression = test_dir() / "valgrind.suppression"
+    glib_suppression = pkgconfig.variables("glib-2.0")["glib_valgrind_suppressions"]
+
+    return [
+        "valgrind",
+        "--tool=memcheck",
+        "--error-exitcode=1",
+        "--track-origins=yes",
+        "--leak-check=full",
+        "--leak-resolution=high",
+        "--num-callers=50",
+        "--show-leak-kinds=definite,possible",
+        "--show-error-list=yes",
+        "--show-realloc-size-zero=no",
+        f"--suppressions={glib_suppression}",
+        f"--suppressions={xdp_suppression}",
+    ]
+
+
+@pytest.fixture
 def xdg_desktop_portal(
-    dbus_con: dbus.Bus, xdg_desktop_portal_path: Path, xdp_env: dict[str, str]
+    dbus_con: dbus.Bus,
+    xdg_desktop_portal_path: Path,
+    xdp_env: dict[str, str],
+    xdp_valgrind_args: list[str],
 ) -> Iterator[subprocess.Popen]:
     """
     Fixture which starts and eventually stops xdg-desktop-portal
@@ -463,7 +493,9 @@ def xdg_desktop_portal(
     env = xdp_env.copy()
     _maybe_add_asan_preload(xdg_desktop_portal_path, env)
 
-    xdg_desktop_portal = subprocess.Popen([xdg_desktop_portal_path], env=env)
+    xdg_desktop_portal = subprocess.Popen(
+        xdp_valgrind_args + [xdg_desktop_portal_path], env=env
+    )
 
     while not dbus_con.name_has_owner("org.freedesktop.portal.Desktop"):
         returncode = xdg_desktop_portal.poll()
