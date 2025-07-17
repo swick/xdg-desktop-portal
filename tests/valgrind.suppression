@@ -7,6 +7,23 @@
 }
 
 {
+  glib/thread_new
+  Memcheck:Leak
+  fun:calloc
+  ...
+  fun:g_thread_new_internal
+}
+
+{
+  glib/module_close
+  Memcheck:Leak
+  fun:malloc
+  ...
+  fun:g_module_close
+}
+
+# This is too broad; need to properly own things to avoid this
+{
   xdp/notification_init
   Memcheck:Leak
   fun:*alloc
@@ -14,6 +31,7 @@
   fun:notification_init
 }
 
+# This is too broad; need to properly own things to avoid this
 {
   xdp/dynamic_launcher_init
   Memcheck:Leak
@@ -21,22 +39,3 @@
   ...
   fun:dynamic_launcher_init
 }
-
-# FIXME: fix in code instead
-{
-  xdp/proxy_resolver_init
-  Memcheck:Leak
-  fun:*alloc
-  ...
-  fun:proxy_resolver_init
-}
-
-# FIXME: make this tighter
-{
-  glib/thread_new
-  Memcheck:Leak
-  fun:*alloc
-  ...
-  fun:g_thread_new_internal
-}
-
