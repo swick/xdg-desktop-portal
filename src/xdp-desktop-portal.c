@@ -1,5 +1,5 @@
 /*
- * Copyright © 2016 Red Hat, Inc
+ * Copyright © 2025 Red Hat, Inc
  *
  * SPDX-License-Identifier: LGPL-2.1-or-later
  *
@@ -10,25 +10,14 @@
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.	 See the GNU
  * Lesser General Public License for more details.
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library. If not, see <http://www.gnu.org/licenses/>.
- *
- * Authors:
- *       Alexander Larsson <alexl@redhat.com>
- *       Matthias Clasen <mclasen@redhat.com>
  */
 
 #include "config.h"
-
-#include <locale.h>
-#include <stdio.h>
-#include <string.h>
-
-#include <glib-unix.h>
-#include <glib/gi18n.h>
 
 #include "xdp-utils.h"
 #include "xdp-call.h"
@@ -71,47 +60,58 @@
 #include "usb.h"
 #include "wallpaper.h"
 
-static int global_exit_status = 0;
-static GMainLoop *loop = NULL;
+#include "xdp-desktop-portal.h"
 
-gboolean opt_verbose;
-static gboolean opt_replace;
-static gboolean show_version;
+struct _XdpDesktopPortal
+{
+  GObject parent_instance;
 
-static GOptionEntry entries[] = {
-  { "verbose", 'v', 0, G_OPTION_ARG_NONE, &opt_verbose, "Print debug information during command processing", NULL },
-  { "replace", 'r', 0, G_OPTION_ARG_NONE, &opt_replace, "Replace a running instance", NULL },
-  { "version", 0, 0, G_OPTION_ARG_NONE, &show_version, "Show program version.", NULL},
-  { NULL }
+  gboolean verbose;
+
+  XdpPortalImpls *portal_impls;
 };
 
-XdpDbusImplLockdown *lockdown;
+G_DEFINE_FINAL_TYPE (XdpDesktopPortal, xdp_desktop_portal, G_TYPE_OBJECT)
 
 static void
-message_handler (const gchar *log_domain,
-                 GLogLevelFlags log_level,
-                 const gchar *message,
-                 gpointer user_data)
+xdp_desktop_portal_dispose (GObject *object)
 {
-  /* Make this look like normal console output */
-  if (log_level & G_LOG_LEVEL_DEBUG)
-    fprintf (stderr, "XDP: %s\n", message);
-  else
-    fprintf (stderr, "%s: %s\n", g_get_prgname (), message);
+  XdpDesktopPortal *desktop_portal = XDP_DESKTOP_PORTAL (object);
+
+  g_clear_object (&desktop_portal->portal_impls);
+
+  G_OBJECT_CLASS (xdp_desktop_portal_parent_class)->dispose (object);
 }
 
 static void
-printerr_handler (const gchar *string)
+xdp_desktop_portal_class_init (XdpDesktopPortalClass *klass)
 {
-  int is_tty = isatty (1);
-  const char *prefix = "";
-  const char *suffix = "";
-  if (is_tty)
-    {
-      prefix = "\x1b[31m\x1b[1m"; /* red, bold */
-      suffix = "\x1b[22m\x1b[0m"; /* bold off, color reset */
-    }
-  fprintf (stderr, "%serror: %s%s\n", prefix, suffix, string);
+  GObjectClass *object_class = G_OBJECT_CLASS (klass);
+
+  object_class->dispose = xdp_desktop_portal_dispose;
+}
+
+static void
+xdp_desktop_portal_init (XdpDesktopPortal *desktop_portal)
+{
+}
+
+XdpDesktopPortal *
+xdp_desktop_portal_new (gboolean opt_verbose)
+{
+  XdpDesktopPortal *desktop_portal =
+    g_object_new (XDP_TYPE_DESKTOP_PORTAL, NULL);
+
+  desktop_portal->verbose = opt_verbose;
+  desktop_portal->portal_impls = xdp_portal_impls_new (desktop_portal);
+
+  return desktop_portal;
+}
+
+gboolean
+xdp_desktop_portal_is_verbose (XdpDesktopPortal *desktop_portal)
+{
+  return desktop_portal->verbose;
 }
 
 static gboolean
@@ -224,50 +224,41 @@ export_host_portal_implementation (GDBusConnection        *connection,
 }
 
 static void
-peer_died_cb (const char *name)
+on_peer_died (const char *name)
 {
   close_requests_for_sender (name);
   close_sessions_for_sender (name);
   xdp_session_persistence_delete_transient_permissions_for_sender (name);
 }
 
-static void
-exit_with_status (int status)
+gboolean
+xdp_desktop_portal_register (XdpDesktopPortal  *desktop_portal,
+                             GDBusConnection   *connection,
+                             GError           **error)
 {
-  global_exit_status = status;
-  g_main_loop_quit (loop);
-}
-
-static void
-on_bus_acquired (GDBusConnection *connection,
-                 const gchar     *name,
-                 gpointer         user_data)
-{
-  XdpPortalImpls *portal_impls = XDP_PORTAL_IMPLS (user_data);
+  XdpPortalImpls *portal_impls = desktop_portal->portal_impls;
   XdpPortalImplementation *implementation;
+  XdpDbusImplLockdown *lockdown;
   XdpPortalImplementation *lockdown_impl;
   XdpPortalImplementation *access_impl;
   GQuark portal_errors G_GNUC_UNUSED;
   GPtrArray *impls;
-  g_autoptr(GError) error = NULL;
 
   /* make sure errors are registered */
   portal_errors = XDG_DESKTOP_PORTAL_ERROR;
 
-  xdp_connection_track_name_owners (connection, peer_died_cb);
+  xdp_connection_track_name_owners (connection, on_peer_died);
 
-  if (!xdp_init_permission_store (connection, &error))
+  if (!xdp_init_permission_store (connection, error))
     {
-      g_critical ("No permission store: %s", error->message);
-      exit_with_status (1);
-      return;
+      g_prefix_error_literal (error, "No permission store: ");
+      return FALSE;
     }
 
-  if (!xdp_init_document_proxy (connection, &error))
+  if (!xdp_init_document_proxy (connection, error))
     {
-      g_critical ("No document portal: %s", error->message);
-      exit_with_status (1);
-      return;
+      g_prefix_error_literal (error, "No document portal: ");
+      return FALSE;
     }
 
   lockdown_impl = xdp_portal_impls_find (portal_impls, "org.freedesktop.impl.portal.Lockdown");
@@ -411,137 +402,6 @@ on_bus_acquired (GDBusConnection *connection,
 #endif
 
   export_host_portal_implementation (connection, registry_create (connection));
-}
 
-static void
-on_name_acquired (GDBusConnection *connection,
-                  const gchar     *name,
-                  gpointer         user_data)
-{
-  g_debug ("%s acquired", name);
-}
-
-static void
-on_name_lost (GDBusConnection *connection,
-              const gchar     *name,
-              gpointer         user_data)
-{
-  exit_with_status (0);
-}
-
-static gboolean
-signal_handler_cb (gpointer user_data)
-{
-  exit_with_status (0);
-  g_debug ("Terminated with signal.");
-  return G_SOURCE_REMOVE;
-}
-
-int
-main (int argc, char *argv[])
-{
-  g_autoptr(XdpPortalImpls) portal_impls = NULL;
-  guint owner_id;
-  g_autoptr(GError) error = NULL;
-  g_autoptr(GDBusConnection) session_bus = NULL;
-  g_autoptr(GSource) signal_handler_source = NULL;
-  g_autoptr(GOptionContext) context = NULL;
-
-  if (g_getenv ("XDG_DESKTOP_PORTAL_WAIT_FOR_DEBUGGER") != NULL)
-    {
-      g_printerr ("\ndesktop portal (PID %d) is waiting for a debugger. "
-                  "Use `gdb -p %d` to connect. \n",
-                  getpid (), getpid ());
-
-      if (raise (SIGSTOP) == -1)
-        {
-          g_printerr ("Failed waiting for debugger\n");
-          exit (1);
-        }
-
-      raise (SIGCONT);
-    }
-
-  setlocale (LC_ALL, "");
-  bindtextdomain (GETTEXT_PACKAGE, LOCALEDIR);
-  bind_textdomain_codeset (GETTEXT_PACKAGE, "UTF-8");
-  textdomain (GETTEXT_PACKAGE);
-
-  /* Note: if you add any more environment variables here, update
-   * handle_launch() in dynamic-launcher.c to unset them before launching apps
-   */
-  /* Avoid even loading gvfs to avoid accidental confusion */
-  g_setenv ("GIO_USE_VFS", "local", TRUE);
-
-  /* Avoid pointless and confusing recursion */
-  g_unsetenv ("GTK_USE_PORTAL");
-
-  context = g_option_context_new ("- desktop portal");
-  g_option_context_set_summary (context,
-      "A portal service for flatpak and other desktop containment frameworks.");
-  g_option_context_set_description (context,
-      "xdg-desktop-portal works by exposing D-Bus interfaces known as portals\n"
-      "under the well-known name org.freedesktop.portal.Desktop and object\n"
-      "path /org/freedesktop/portal/desktop.\n"
-      "\n"
-      "Documentation for the available D-Bus interfaces can be found at\n"
-      "https://flatpak.github.io/xdg-desktop-portal/docs/\n"
-      "\n"
-      "Please report issues at https://github.com/flatpak/xdg-desktop-portal/issues");
-  g_option_context_add_main_entries (context, entries, NULL);
-  if (!g_option_context_parse (context, &argc, &argv, &error))
-    {
-      g_printerr ("%s: %s", g_get_application_name (), error->message);
-      g_printerr ("\n");
-      g_printerr ("Try \"%s --help\" for more information.",
-                  g_get_prgname ());
-      g_printerr ("\n");
-      return 1;
-    }
-
-  if (show_version)
-    {
-      g_print (PACKAGE_STRING "\n");
-      return 0;
-    }
-
-  g_set_printerr_handler (printerr_handler);
-
-  if (opt_verbose)
-    g_log_set_handler (G_LOG_DOMAIN, G_LOG_LEVEL_DEBUG, message_handler, NULL);
-
-  g_set_prgname (argv[0]);
-
-  portal_impls = xdp_portal_impls_new (opt_verbose);
-  loop = g_main_loop_new (NULL, FALSE);
-
-  /* Setup a signal handler so that we can quit cleanly.
-   * This is useful for triggering asan.
-   */
-  signal_handler_source = g_unix_signal_source_new (SIGHUP);
-  g_source_set_callback (signal_handler_source, G_SOURCE_FUNC (signal_handler_cb), NULL, NULL);
-  g_source_attach (signal_handler_source, g_main_loop_get_context (loop));
-
-  session_bus = g_bus_get_sync (G_BUS_TYPE_SESSION, NULL, &error);
-  if (session_bus == NULL)
-    {
-      g_printerr ("No session bus: %s", error->message);
-      return 2;
-    }
-
-  owner_id = g_bus_own_name (G_BUS_TYPE_SESSION,
-                             "org.freedesktop.portal.Desktop",
-                             G_BUS_NAME_OWNER_FLAGS_ALLOW_REPLACEMENT | (opt_replace ? G_BUS_NAME_OWNER_FLAGS_REPLACE : 0),
-                             on_bus_acquired,
-                             on_name_acquired,
-                             on_name_lost,
-                             portal_impls,
-                             NULL);
-
-  g_main_loop_run (loop);
-
-  g_bus_unown_name (owner_id);
-  g_main_loop_unref (loop);
-
-  return global_exit_status;
+  return TRUE;
 }

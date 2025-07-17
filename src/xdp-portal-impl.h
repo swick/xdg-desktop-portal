@@ -39,7 +39,9 @@ G_DECLARE_FINAL_TYPE (XdpPortalImpls,
                       XDP, PORTAL_IMPLS,
                       GObject)
 
-XdpPortalImpls * xdp_portal_impls_new (gboolean opt_verbose);
+typedef struct _XdpDesktopPortal XdpDesktopPortal;
+
+XdpPortalImpls * xdp_portal_impls_new (XdpDesktopPortal *desktop_portal);
 
 XdpPortalImplementation * xdp_portal_impls_find (XdpPortalImpls *portal_impls,
                                                  const char     *interface);

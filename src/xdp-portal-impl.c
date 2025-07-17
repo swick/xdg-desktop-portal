@@ -28,6 +28,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "xdp-desktop-portal.h"
+
 #include "xdp-portal-impl.h"
 
 typedef struct _PortalInterface {
@@ -593,9 +595,10 @@ xdp_portal_impls_init (XdpPortalImpls *portal_impls)
 }
 
 XdpPortalImpls *
-xdp_portal_impls_new (gboolean opt_verbose)
+xdp_portal_impls_new (XdpDesktopPortal *desktop_portal)
 {
   XdpPortalImpls *portal_impls = g_object_new (XDP_TYPE_PORTAL_IMPLS, NULL);
+  gboolean opt_verbose = xdp_desktop_portal_is_verbose (desktop_portal);
 
   portal_impls->current_desktops = get_current_lowercase_desktops ();
   portal_impls->config = load_portal_configuration (portal_impls, opt_verbose);
