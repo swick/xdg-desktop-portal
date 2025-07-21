@@ -25,4 +25,6 @@
 
 #include <gio/gio.h>
 
-GDBusInterfaceSkeleton * proxy_resolver_create (GDBusConnection *connection);
+#include "xdp-desktop-portal.h"
+
+void proxy_resolver_create (XdpDesktopPortal *desktop_portal);

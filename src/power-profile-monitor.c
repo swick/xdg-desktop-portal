@@ -51,8 +51,6 @@ struct _PowerProfileMonitorClass
   XdpDbusPowerProfileMonitorSkeletonClass parent_class;
 };
 
-static PowerProfileMonitor *power_profile_monitor;
-
 GType power_profile_monitor_get_type (void) G_GNUC_CONST;
 static void power_profile_monitor_iface_init (XdpDbusPowerProfileMonitorIface *iface);
 
@@ -60,6 +58,8 @@ G_DEFINE_TYPE_WITH_CODE (PowerProfileMonitor, power_profile_monitor,
                          XDP_DBUS_TYPE_POWER_PROFILE_MONITOR_SKELETON,
                          G_IMPLEMENT_INTERFACE (XDP_DBUS_TYPE_POWER_PROFILE_MONITOR,
                                                 power_profile_monitor_iface_init));
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (PowerProfileMonitor, g_object_unref)
 
 static void
 power_profile_monitor_iface_init (XdpDbusPowerProfileMonitorIface *iface)
@@ -108,10 +108,28 @@ power_profile_monitor_class_init (PowerProfileMonitorClass *klass)
   object_class->finalize = power_profile_monitor_finalize;
 }
 
-GDBusInterfaceSkeleton *
-power_profile_monitor_create (GDBusConnection *connection)
+void
+power_profile_monitor_create (XdpDesktopPortal *desktop_portal)
 {
+  g_autoptr(PowerProfileMonitor) power_profile_monitor = NULL;
+  g_autoptr(GError) error = NULL;
+
   power_profile_monitor = g_object_new (power_profile_monitor_get_type (), NULL);
 
-  return G_DBUS_INTERFACE_SKELETON (power_profile_monitor);
+  if (xdp_desktop_portal_export (desktop_portal,
+                                 G_DBUS_INTERFACE_SKELETON (power_profile_monitor),
+                                 &error))
+    {
+      g_object_set_data_full (G_OBJECT (desktop_portal),
+                              "-portal-power-profile-monitor",
+                              g_steal_pointer (&power_profile_monitor),
+                              g_object_unref);
+
+      g_debug ("Providing Power Profile Monitor portal");
+    }
+  else
+    {
+      g_warning ("Not providing Power Profile Monitor portal: %s",
+                 error->message);
+    }
 }

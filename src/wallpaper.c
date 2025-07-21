@@ -28,12 +28,16 @@
 #include <gio/gdesktopappinfo.h>
 #include <gio/gunixfdlist.h>
 
-#include "wallpaper.h"
 #include "xdp-permissions.h"
 #include "xdp-request.h"
 #include "xdp-dbus.h"
 #include "xdp-impl-dbus.h"
 #include "xdp-utils.h"
+#include "xdp-portal-impl.h"
+
+#include "wallpaper.h"
+
+#define WALLPAPER_DBUS_IMPL_IFACE DESKTOP_DBUS_IMPL_IFACE ".Wallpaper"
 
 #define PERMISSION_TABLE "wallpaper"
 #define PERMISSION_ID "wallpaper"
@@ -44,6 +48,9 @@ typedef struct _WallpaperClass WallpaperClass;
 struct _Wallpaper
 {
   XdpDbusWallpaperSkeleton parent_instance;
+
+  XdpDbusImplWallpaper *impl;
+  XdpDbusImplAccess *access_impl;
 };
 
 struct _WallpaperClass
@@ -51,16 +58,14 @@ struct _WallpaperClass
   XdpDbusWallpaperSkeletonClass parent_class;
 };
 
-static XdpDbusImplWallpaper *impl;
-static XdpDbusImplAccess *access_impl;
-static Wallpaper *wallpaper;
-
 GType wallpaper_get_type (void) G_GNUC_CONST;
 static void wallpaper_iface_init (XdpDbusWallpaperIface *iface);
 
 G_DEFINE_TYPE_WITH_CODE (Wallpaper, wallpaper, XDP_DBUS_TYPE_WALLPAPER_SKELETON,
                          G_IMPLEMENT_INTERFACE (XDP_DBUS_TYPE_WALLPAPER,
                                                 wallpaper_iface_init));
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (Wallpaper, g_object_unref)
 
 static void
 send_response (XdpRequest *request,
@@ -125,6 +130,7 @@ handle_set_wallpaper_in_thread_func (GTask *task,
                                      gpointer task_data,
                                      GCancellable *cancellable)
 {
+  Wallpaper *wallpaper = (Wallpaper *) source_object;
   XdpRequest *request = XDP_REQUEST (task_data);
   const char *parent_window;
   const char *id = xdp_app_info_get_id (request->app_info);
@@ -219,7 +225,7 @@ handle_set_wallpaper_in_thread_func (GTask *task,
         }
       body = _("This permission can be changed at any time from the privacy settings.");
 
-      if (!xdp_dbus_impl_access_call_access_dialog_sync (access_impl,
+      if (!xdp_dbus_impl_access_call_access_dialog_sync (wallpaper->access_impl,
                                                          request->id,
                                                          app_id,
                                                          parent_window,
@@ -271,11 +277,12 @@ handle_set_wallpaper_in_thread_func (GTask *task,
       g_object_set_data_full (G_OBJECT (request), "uri", g_strdup (uri), g_free);
     }
 
-  impl_request = xdp_dbus_impl_request_proxy_new_sync (g_dbus_proxy_get_connection (G_DBUS_PROXY (impl)),
-                                                       G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES,
-                                                       g_dbus_proxy_get_name (G_DBUS_PROXY (impl)),
-                                                       request->id,
-                                                       NULL, &error);
+  impl_request = xdp_dbus_impl_request_proxy_new_sync (
+    g_dbus_proxy_get_connection (G_DBUS_PROXY (wallpaper->impl)),
+    G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES,
+    g_dbus_proxy_get_name (G_DBUS_PROXY (wallpaper->impl)),
+    request->id,
+    NULL, &error);
 
   if (!impl_request)
     {
@@ -291,7 +298,7 @@ handle_set_wallpaper_in_thread_func (GTask *task,
                       NULL);
 
   g_debug ("Calling SetWallpaperURI with %s", uri);
-  xdp_dbus_impl_wallpaper_call_set_wallpaper_uri (impl,
+  xdp_dbus_impl_wallpaper_call_set_wallpaper_uri (wallpaper->impl,
                                                   request->id,
                                                   id,
                                                   parent_window,
@@ -389,7 +396,6 @@ wallpaper_iface_init (XdpDbusWallpaperIface *iface)
 static void
 wallpaper_init (Wallpaper *wallpaper)
 {
-  xdp_dbus_wallpaper_set_version (XDP_DBUS_WALLPAPER (wallpaper), 1);
 }
 
 static void
@@ -397,34 +403,57 @@ wallpaper_class_init (WallpaperClass *klass)
 {
 }
 
-GDBusInterfaceSkeleton *
-wallpaper_create (GDBusConnection *connection,
-                  const char *dbus_name_access,
-                  const char *dbus_name_wallpaper)
+void
+wallpaper_create (XdpDesktopPortal *desktop_portal)
 {
+  g_autoptr(Wallpaper) wallpaper = NULL;
+  GDBusConnection *connection =
+    xdp_desktop_portal_get_connection (desktop_portal);
+  XdpPortalImpls *portal_impls = xdp_desktop_portal_get_impls (desktop_portal);
+  XdpPortalImplementation *impl;
   g_autoptr(GError) error = NULL;
 
-  impl = xdp_dbus_impl_wallpaper_proxy_new_sync (connection,
-                                                 G_DBUS_PROXY_FLAGS_NONE,
-                                                 dbus_name_wallpaper,
-                                                 DESKTOP_PORTAL_OBJECT_PATH,
-                                                 NULL,
-                                                 &error);
-  if (impl == NULL)
+  impl = xdp_portal_impls_find (portal_impls, WALLPAPER_DBUS_IMPL_IFACE);
+  if (!impl)
     {
-      g_warning ("Failed to create wallpaper proxy: %s", error->message);
-      return NULL;
+      g_debug ("Not providing Wallpaper portal: No backend configured");
+      return;
     }
 
-  g_dbus_proxy_set_default_timeout (G_DBUS_PROXY (impl), G_MAXINT);
   wallpaper = g_object_new (wallpaper_get_type (), NULL);
+  wallpaper->access_impl =
+    xdp_desktop_portal_get_access_proxy (desktop_portal);
+  wallpaper->impl =
+    xdp_dbus_impl_wallpaper_proxy_new_sync (connection,
+                                            G_DBUS_PROXY_FLAGS_NONE,
+                                            impl->dbus_name,
+                                            DESKTOP_DBUS_PATH,
+                                            NULL,
+                                            &error);
 
-  access_impl = xdp_dbus_impl_access_proxy_new_sync (connection,
-                                                     G_DBUS_PROXY_FLAGS_NONE,
-                                                     dbus_name_access,
-                                                     DESKTOP_PORTAL_OBJECT_PATH,
-                                                     NULL,
-                                                     &error);
+  if (!wallpaper->impl)
+    {
+      g_warning ("Not providing Wallpaper portal: No working backend");
+      return;
+    }
 
-  return G_DBUS_INTERFACE_SKELETON (wallpaper);
+  g_dbus_proxy_set_default_timeout (G_DBUS_PROXY (wallpaper->impl), G_MAXINT);
+
+  xdp_dbus_wallpaper_set_version (XDP_DBUS_WALLPAPER (wallpaper), 1);
+
+  if (xdp_desktop_portal_export (desktop_portal,
+                                 G_DBUS_INTERFACE_SKELETON (wallpaper),
+                                 &error))
+    {
+      g_object_set_data_full (G_OBJECT (desktop_portal),
+                              "-portal-wallpaper",
+                              g_steal_pointer (&wallpaper),
+                              g_object_unref);
+
+      g_debug ("Providing Wallpaper portal");
+    }
+  else
+    {
+      g_warning ("Not providing Wallpaper portal: %s", error->message);
+    }
 }

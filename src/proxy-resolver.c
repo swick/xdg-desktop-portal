@@ -46,8 +46,6 @@ struct _ProxyResolverClass
   XdpDbusProxyResolverSkeletonClass parent_class;
 };
 
-static ProxyResolver *proxy_resolver;
-
 GType proxy_resolver_get_type (void) G_GNUC_CONST;
 static void proxy_resolver_iface_init (XdpDbusProxyResolverIface *iface);
 
@@ -55,6 +53,8 @@ G_DEFINE_TYPE_WITH_CODE (ProxyResolver, proxy_resolver,
                          XDP_DBUS_TYPE_PROXY_RESOLVER_SKELETON,
                          G_IMPLEMENT_INTERFACE (XDP_DBUS_TYPE_PROXY_RESOLVER,
                                                 proxy_resolver_iface_init));
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (ProxyResolver, g_object_unref)
 
 static gboolean
 proxy_resolver_handle_lookup (XdpDbusProxyResolver *object,
@@ -117,10 +117,27 @@ proxy_resolver_class_init (ProxyResolverClass *klass)
   object_class->dispose = proxy_resolver_dispose;
 }
 
-GDBusInterfaceSkeleton *
-proxy_resolver_create (GDBusConnection *connection)
+void
+proxy_resolver_create (XdpDesktopPortal *desktop_portal)
 {
+  g_autoptr(ProxyResolver) proxy_resolver = NULL;
+  g_autoptr(GError) error = NULL;
+
   proxy_resolver = g_object_new (proxy_resolver_get_type (), NULL);
 
-  return G_DBUS_INTERFACE_SKELETON (proxy_resolver);
+  if (xdp_desktop_portal_export (desktop_portal,
+                                 G_DBUS_INTERFACE_SKELETON (proxy_resolver),
+                                 &error))
+    {
+      g_object_set_data_full (G_OBJECT (desktop_portal),
+                              "-portal-proxy-resolver",
+                              g_steal_pointer (&proxy_resolver),
+                              g_object_unref);
+
+      g_debug ("Providing Proxy Resolver portal");
+    }
+  else
+    {
+      g_warning ("Not providing Proxy Resolver portal: %s", error->message);
+    }
 }

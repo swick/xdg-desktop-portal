@@ -24,6 +24,7 @@
 
 #include "xdp-session.h"
 #include "screen-cast.h"
+#include "xdp-desktop-portal.h"
 
 typedef struct _RemoteDesktopSession RemoteDesktopSession;
 
@@ -41,6 +42,8 @@ IS_REMOTE_DESKTOP_SESSION (gpointer ptr)
   return G_TYPE_CHECK_INSTANCE_TYPE (ptr, remote_desktop_session_get_type ());
 }
 
+void remote_desktop_create (XdpDesktopPortal *desktop_portal);
+
 GList * remote_desktop_session_get_streams (RemoteDesktopSession *session);
 
 gboolean remote_desktop_session_can_select_sources (RemoteDesktopSession *session);
@@ -52,6 +55,3 @@ gboolean remote_desktop_session_is_clipboard_enabled (RemoteDesktopSession *sess
 void remote_desktop_session_sources_selected (RemoteDesktopSession *session);
 
 void remote_desktop_session_clipboard_requested (RemoteDesktopSession *session);
-
-GDBusInterfaceSkeleton * remote_desktop_create (GDBusConnection *connection,
-                                                const char      *dbus_name);

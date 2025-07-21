@@ -36,10 +36,6 @@
 
 #include "xdp-utils.h"
 
-#define DBUS_NAME_DBUS "org.freedesktop.DBus"
-#define DBUS_INTERFACE_DBUS DBUS_NAME_DBUS
-#define DBUS_PATH_DBUS "/org/freedesktop/DBus"
-
 #define PIDFS_IOCTL_MAGIC 0xFF
 #define PIDFD_GET_PID_NAMESPACE _IO(PIDFS_IOCTL_MAGIC, 5)
 
@@ -121,46 +117,6 @@ needs_quoting (const char *arg)
       arg++;
     }
   return FALSE;
-}
-
-static void
-name_owner_changed (GDBusConnection *connection,
-                    const gchar     *sender_name,
-                    const gchar     *object_path,
-                    const gchar     *interface_name,
-                    const gchar     *signal_name,
-                    GVariant        *parameters,
-                    gpointer         user_data)
-{
-  const char *name, *from, *to;
-  XdpPeerDiedCallback peer_died_cb = user_data;
-
-  if (!peer_died_cb)
-    return;
-
-  g_variant_get (parameters, "(&s&s&s)", &name, &from, &to);
-
-  if (name[0] != ':' ||
-      strcmp (name, from) != 0 ||
-      strcmp (to, "") != 0)
-    return;
-
-  peer_died_cb (name);
-}
-
-void
-xdp_connection_track_name_owners (GDBusConnection     *connection,
-                                  XdpPeerDiedCallback  peer_died_cb)
-{
-  g_dbus_connection_signal_subscribe (connection,
-                                      DBUS_NAME_DBUS,
-                                      DBUS_INTERFACE_DBUS,
-                                      "NameOwnerChanged",
-                                      DBUS_PATH_DBUS,
-                                      NULL,
-                                      G_DBUS_SIGNAL_FLAGS_NONE,
-                                      name_owner_changed,
-                                      peer_died_cb, NULL);
 }
 
 gboolean

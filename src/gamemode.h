@@ -24,4 +24,6 @@
 
 #include <gio/gio.h>
 
-GDBusInterfaceSkeleton * game_mode_create (GDBusConnection *connection);
+#include "xdp-desktop-portal.h"
+
+void game_mode_create (XdpDesktopPortal *desktop_portal);

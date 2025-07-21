@@ -46,8 +46,6 @@ struct _NetworkMonitorClass
   XdpDbusNetworkMonitorSkeletonClass parent_class;
 };
 
-static NetworkMonitor *network_monitor;
-
 GType network_monitor_get_type (void) G_GNUC_CONST;
 static void network_monitor_iface_init (XdpDbusNetworkMonitorIface *iface);
 
@@ -55,6 +53,8 @@ G_DEFINE_TYPE_WITH_CODE (NetworkMonitor, network_monitor,
                          XDP_DBUS_TYPE_NETWORK_MONITOR_SKELETON,
                          G_IMPLEMENT_INTERFACE (XDP_DBUS_TYPE_NETWORK_MONITOR,
                                                 network_monitor_iface_init));
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (NetworkMonitor, g_object_unref)
 
 static gboolean
 handle_get_available (XdpDbusNetworkMonitor *object,
@@ -238,10 +238,27 @@ network_monitor_class_init (NetworkMonitorClass *klass)
 {
 }
 
-GDBusInterfaceSkeleton *
-network_monitor_create (GDBusConnection *connection)
+void
+network_monitor_create (XdpDesktopPortal *desktop_portal)
 {
+  g_autoptr(NetworkMonitor) network_monitor = NULL;
+  g_autoptr(GError) error = NULL;
+
   network_monitor = g_object_new (network_monitor_get_type (), NULL);
 
-  return G_DBUS_INTERFACE_SKELETON (network_monitor);
+  if (xdp_desktop_portal_export (desktop_portal,
+                                 G_DBUS_INTERFACE_SKELETON (network_monitor),
+                                 &error))
+    {
+      g_object_set_data_full (G_OBJECT (desktop_portal),
+                              "-portal-network-monitor",
+                              g_steal_pointer (&network_monitor),
+                              g_object_unref);
+
+      g_debug ("Providing Network Monitor portal");
+    }
+  else
+    {
+      g_warning ("Not providing Network Monitor portal: %s", error->message);
+    }
 }

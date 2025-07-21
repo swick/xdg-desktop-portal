@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "xdp-utils.h"
 #include "xdp-desktop-portal.h"
 
 #include "xdp-portal-impl.h"
@@ -220,7 +221,7 @@ register_portal (GHashTable  *portals,
                        "Not a valid interface name: %s", impl->interfaces[i]);
           return FALSE;
         }
-      if (!g_str_has_prefix (impl->interfaces[i], "org.freedesktop.impl.portal."))
+      if (!g_str_has_prefix (impl->interfaces[i], DESKTOP_DBUS_IMPL_IFACE "."))
         {
           g_set_error (error, G_KEY_FILE_ERROR, G_KEY_FILE_ERROR_INVALID_VALUE,
                        "Not a portal backend interface: %s", impl->interfaces[i]);
@@ -847,7 +848,7 @@ find_gtk_fallback_portal_implementation (XdpPortalImpls *portal_impls,
     {
       XdpPortalImplementation *impl = g_ptr_array_index (implementations, i);
 
-      if (!g_str_equal (impl->dbus_name, "org.freedesktop.impl.portal.desktop.gtk"))
+      if (!g_str_equal (impl->dbus_name, DESKTOP_DBUS_IMPL_IFACE ".desktop.gtk"))
         continue;
 
       if (!portal_impl_supports_iface (impl, interface))

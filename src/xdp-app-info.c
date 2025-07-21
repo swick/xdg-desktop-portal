@@ -50,10 +50,6 @@
 #include "xdp-enum-types.h"
 #include "xdp-utils.h"
 
-#define DBUS_NAME_DBUS "org.freedesktop.DBus"
-#define DBUS_INTERFACE_DBUS DBUS_NAME_DBUS
-#define DBUS_PATH_DBUS "/org/freedesktop/DBus"
-
 G_LOCK_DEFINE (app_infos);
 static GHashTable *app_info_by_unique_name;
 
@@ -750,9 +746,9 @@ xdp_connection_get_pid_legacy (GDBusConnection  *connection,
   g_autoptr(GVariant) reply = NULL;
 
   reply = g_dbus_connection_call_sync (connection,
-                                       DBUS_NAME_DBUS,
-                                       DBUS_PATH_DBUS,
-                                       DBUS_INTERFACE_DBUS,
+                                       DBUS_DBUS_NAME,
+                                       DBUS_DBUS_PATH,
+                                       DBUS_DBUS_IFACE,
                                        "GetConnectionUnixProcessID",
                                        g_variant_new ("(s)", sender),
                                        G_VARIANT_TYPE ("(u)"),
@@ -787,9 +783,9 @@ xdp_connection_get_pidfd (GDBusConnection  *connection,
   g_autofd int pidfd = -1;
 
   reply = g_dbus_connection_call_with_unix_fd_list_sync (connection,
-                                                         DBUS_NAME_DBUS,
-                                                         DBUS_PATH_DBUS,
-                                                         DBUS_INTERFACE_DBUS,
+                                                         DBUS_DBUS_NAME,
+                                                         DBUS_DBUS_PATH,
+                                                         DBUS_DBUS_IFACE,
                                                          "GetConnectionCredentials",
                                                          g_variant_new ("(s)", sender),
                                                          G_VARIANT_TYPE ("(a{sv})"),
@@ -912,8 +908,8 @@ cache_insert_app_info (const char *sender,
   G_UNLOCK (app_infos);
 }
 
-static void
-on_peer_died (const char *name)
+void
+xdp_app_info_delete_for_sender (const char *name)
 {
   G_LOCK (app_infos);
   if (app_info_by_unique_name)
@@ -1012,8 +1008,6 @@ xdp_connection_create_app_info_sync (GDBusConnection  *connection,
 
   cache_insert_app_info (sender, app_info);
 
-  xdp_connection_track_name_owners (connection, on_peer_died);
-
   return g_steal_pointer (&app_info);
 }
 
@@ -1065,8 +1059,6 @@ xdp_connection_create_host_app_info_sync (GDBusConnection  *connection,
   g_debug ("Adding registered host app '%s'", xdp_app_info_get_id (app_info));
 
   cache_insert_app_info (sender, app_info);
-
-  xdp_connection_track_name_owners (connection, on_peer_died);
 
   return g_steal_pointer (&app_info);
 }

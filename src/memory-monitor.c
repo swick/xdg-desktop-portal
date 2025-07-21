@@ -51,8 +51,6 @@ struct _MemoryMonitorClass
   XdpDbusMemoryMonitorSkeletonClass parent_class;
 };
 
-static MemoryMonitor *memory_monitor;
-
 GType memory_monitor_get_type (void) G_GNUC_CONST;
 static void memory_monitor_iface_init (XdpDbusMemoryMonitorIface *iface);
 
@@ -60,6 +58,8 @@ G_DEFINE_TYPE_WITH_CODE (MemoryMonitor, memory_monitor,
                          XDP_DBUS_TYPE_MEMORY_MONITOR_SKELETON,
                          G_IMPLEMENT_INTERFACE (XDP_DBUS_TYPE_MEMORY_MONITOR, 
                                                 memory_monitor_iface_init));
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (MemoryMonitor, g_object_unref)
 
 static void
 memory_monitor_iface_init (XdpDbusMemoryMonitorIface *iface)
@@ -108,10 +108,27 @@ memory_monitor_class_init (MemoryMonitorClass *klass)
   object_class->finalize = memory_monitor_finalize;
 }
 
-GDBusInterfaceSkeleton *
-memory_monitor_create (GDBusConnection *connection)
+void
+memory_monitor_create (XdpDesktopPortal *desktop_portal)
 {
+  g_autoptr(MemoryMonitor) memory_monitor = NULL;
+  g_autoptr(GError) error = NULL;
+
   memory_monitor = g_object_new (memory_monitor_get_type (), NULL);
 
-  return G_DBUS_INTERFACE_SKELETON (memory_monitor);
+  if (xdp_desktop_portal_export (desktop_portal,
+                                 G_DBUS_INTERFACE_SKELETON (memory_monitor),
+                                 &error))
+    {
+      g_object_set_data_full (G_OBJECT (desktop_portal),
+                              "-portal-memory-monitor",
+                              g_steal_pointer (&memory_monitor),
+                              g_object_unref);
+
+      g_debug ("Providing Memory Monitor portal");
+    }
+  else
+    {
+      g_warning ("Not providing Memory Monitor portal: %s", error->message);
+    }
 }

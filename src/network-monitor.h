@@ -24,4 +24,6 @@
 
 #include <gio/gio.h>
 
-GDBusInterfaceSkeleton * network_monitor_create (GDBusConnection *connection);
+#include "xdp-desktop-portal.h"
+
+void network_monitor_create (XdpDesktopPortal *desktop_portal);

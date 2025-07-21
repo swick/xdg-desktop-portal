@@ -34,7 +34,14 @@
 
 #include "xdp-sealed-fd.h"
 
-#define DESKTOP_PORTAL_OBJECT_PATH "/org/freedesktop/portal/desktop"
+#define DESKTOP_DBUS_NAME "org.freedesktop.portal.Desktop"
+#define DESKTOP_DBUS_IFACE "org.freedesktop.portal"
+#define DESKTOP_DBUS_IMPL_IFACE "org.freedesktop.impl.portal"
+#define DESKTOP_DBUS_PATH "/org/freedesktop/portal/desktop"
+
+#define DBUS_DBUS_NAME "org.freedesktop.DBus"
+#define DBUS_DBUS_IFACE "org.freedesktop.DBus"
+#define DBUS_DBUS_PATH "/org/freedesktop/DBus"
 
 gint xdp_mkstempat (int    dir_fd,
                     gchar *tmpl,
@@ -58,17 +65,12 @@ gboolean xdp_validate_icon (XdpSealedFd  *icon,
 
 gboolean xdp_validate_sound (XdpSealedFd *sound);
 
-typedef void (*XdpPeerDiedCallback) (const char *name);
-
 typedef int XdpFd;
 G_DEFINE_AUTO_CLEANUP_FREE_FUNC(XdpFd, close, -1)
 
 void xdp_set_documents_mountpoint (const char *path);
 const char * xdp_get_documents_mountpoint (void);
 char * xdp_get_alternate_document_path (const char *path, const char *app_id);
-
-void   xdp_connection_track_name_owners  (GDBusConnection       *connection,
-                                          XdpPeerDiedCallback    peer_died_cb);
 
 gboolean xdp_variant_contains_key (GVariant *dictionary,
                                    const char *key);

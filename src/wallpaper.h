@@ -24,6 +24,6 @@
 
 #include <gio/gio.h>
 
-GDBusInterfaceSkeleton * wallpaper_create (GDBusConnection *connection,
-					   const char *dbus_name_access,
-					   const char *dbus_name_wallpaper);
+#include "xdp-desktop-portal.h"
+
+void wallpaper_create (XdpDesktopPortal *desktop_portal);

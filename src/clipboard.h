@@ -23,6 +23,6 @@
 #include <gio/gio.h>
 
 #include "xdp-session.h"
+#include "xdp-desktop-portal.h"
 
-GDBusInterfaceSkeleton *clipboard_create (GDBusConnection *connection,
-                                          const char *dbus_name);
+void clipboard_create (XdpDesktopPortal *desktop_portal);

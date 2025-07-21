@@ -1501,6 +1501,41 @@ peer_died_cb (const char *name)
 }
 
 static void
+on_name_owner_changed (GDBusConnection *connection,
+                       const gchar     *sender_name,
+                       const gchar     *object_path,
+                       const gchar     *interface_name,
+                       const gchar     *signal_name,
+                       GVariant        *parameters,
+                       gpointer         user_data)
+{
+  const char *name, *from, *to;
+
+  g_variant_get (parameters, "(&s&s&s)", &name, &from, &to);
+
+  if (name[0] != ':' ||
+      strcmp (name, from) != 0 ||
+      strcmp (to, "") != 0)
+    return;
+
+  peer_died_cb (name);
+}
+
+static void
+track_name_owners (GDBusConnection *connection)
+{
+  g_dbus_connection_signal_subscribe (connection,
+                                      DBUS_DBUS_NAME,
+                                      DBUS_DBUS_IFACE,
+                                      "NameOwnerChanged",
+                                      DBUS_DBUS_PATH,
+                                      NULL,
+                                      G_DBUS_SIGNAL_FLAGS_NONE,
+                                      on_name_owner_changed,
+                                      NULL, NULL);
+}
+
+static void
 on_bus_acquired (GDBusConnection *connection,
                  const gchar     *name,
                  gpointer         user_data)
@@ -1529,7 +1564,7 @@ on_bus_acquired (GDBusConnection *connection,
   g_dbus_interface_skeleton_set_flags (file_transfer,
                                        G_DBUS_INTERFACE_SKELETON_FLAGS_HANDLE_METHOD_INVOCATIONS_IN_THREAD);
 
-  xdp_connection_track_name_owners (connection, peer_died_cb);
+  track_name_owners (connection);
 
   if (!g_dbus_interface_skeleton_export (G_DBUS_INTERFACE_SKELETON (dbus_api),
                                          connection,

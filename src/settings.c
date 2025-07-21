@@ -27,11 +27,14 @@
 #include <glib/gi18n.h>
 #include <gio/gio.h>
 
-#include "settings.h"
 #include "xdp-dbus.h"
 #include "xdp-impl-dbus.h"
 #include "xdp-portal-impl.h"
 #include "xdp-utils.h"
+
+#include "settings.h"
+
+#define SETTINGS_DBUS_IMPL_IFACE DESKTOP_DBUS_IMPL_IFACE ".Settings"
 
 typedef struct _Settings Settings;
 typedef struct _SettingsClass SettingsClass;
@@ -39,15 +42,15 @@ typedef struct _SettingsClass SettingsClass;
 struct _Settings
 {
   XdpDbusSettingsSkeleton parent_instance;
+
+  XdpDbusImplSettings **impls;
+  int n_impls;
 };
 
 struct _SettingsClass
 {
   XdpDbusSettingsSkeletonClass parent_class;
 };
-
-static XdpDbusImplSettings **impls;
-static int n_impls = 0;
 
 GType settings_get_type (void) G_GNUC_CONST;
 static void settings_iface_init (XdpDbusSettingsIface *iface);
@@ -127,6 +130,7 @@ settings_handle_read_all (XdpDbusSettings       *object,
                           GDBusMethodInvocation *invocation,
                           const char    * const *arg_namespaces)
 {
+  Settings *self = (Settings*)object;
   g_autoptr(GHashTable) merged = NULL;
   g_autoptr(GVariant) settings = NULL;
   int j;
@@ -135,13 +139,15 @@ settings_handle_read_all (XdpDbusSettings       *object,
                                   g_free,
                                   (GDestroyNotify) g_variant_dict_unref);
 
-  for (j = n_impls - 1; j >= 0; j--)
+  for (j = self->n_impls - 1; j >= 0; j--)
     {
       g_autoptr(GError) error = NULL;
       g_autoptr(GVariant) impl_value = NULL;
 
-      if (!xdp_dbus_impl_settings_call_read_all_sync (impls[j], arg_namespaces,
-                                                      &impl_value, NULL, &error))
+      if (!xdp_dbus_impl_settings_call_read_all_sync (self->impls[j],
+                                                      arg_namespaces,
+                                                      &impl_value,
+                                                      NULL, &error))
         g_warning ("Failed to ReadAll() from Settings implementation: %s", error->message);
       else
         merge_impl_settings (merged, impl_value);
@@ -159,17 +165,20 @@ settings_handle_read (XdpDbusSettings       *object,
                       const char            *arg_namespace,
                       const char            *arg_key)
 {
-  int i;
+  Settings *self = (Settings*)object;
 
   g_debug ("Read %s %s", arg_namespace, arg_key);
 
-  for (i = 0; i < n_impls; i++)
+  for (size_t i = 0; i < self->n_impls; i++)
     {
       g_autoptr(GError) error = NULL;
       g_autoptr(GVariant) impl_value = NULL;
 
-      if (!xdp_dbus_impl_settings_call_read_sync (impls[i], arg_namespace,
-                                                  arg_key, &impl_value, NULL, &error))
+      if (!xdp_dbus_impl_settings_call_read_sync (self->impls[i],
+                                                  arg_namespace,
+                                                  arg_key,
+                                                  &impl_value,
+                                                  NULL, &error))
         {
           /* A key not being found is expected, continue to our implementation */
           g_debug ("Failed to Read() from Settings implementation: %s", error->message);
@@ -195,17 +204,20 @@ settings_handle_read_one (XdpDbusSettings       *object,
                           const char            *arg_namespace,
                           const char            *arg_key)
 {
-  int i;
+  Settings *self = (Settings*)object;
 
   g_debug ("ReadOne %s %s", arg_namespace, arg_key);
 
-  for (i = 0; i < n_impls; i++)
+  for (size_t i = 0; i < self->n_impls; i++)
     {
       g_autoptr(GError) error = NULL;
       g_autoptr(GVariant) impl_value = NULL;
 
-      if (!xdp_dbus_impl_settings_call_read_sync (impls[i], arg_namespace,
-                                                  arg_key, &impl_value, NULL, &error))
+      if (!xdp_dbus_impl_settings_call_read_sync (self->impls[i],
+                                                  arg_namespace,
+                                                  arg_key,
+                                                  &impl_value,
+                                                  NULL, &error))
         {
           /* A key not being found is expected, continue to our implementation */
           g_debug ("Failed to Read() from Settings implementation: %s", error->message);
@@ -255,10 +267,14 @@ static void
 settings_finalize (GObject *object)
 {
   Settings *self = (Settings*)object;
-  int i;
 
-  for (i = 0; i < n_impls; i++)
-    g_signal_handlers_disconnect_by_data (impls[i], self);
+  for (size_t i = 0; i < self->n_impls; i++)
+    {
+      g_signal_handlers_disconnect_by_data (self->impls[i], self);
+      g_clear_object (&self->impls[i]);
+    }
+
+  g_clear_pointer(&self->impls, g_free);
 
   G_OBJECT_CLASS (settings_parent_class)->finalize (object);
 }
@@ -271,30 +287,40 @@ settings_class_init (SettingsClass *klass)
   object_class->finalize = settings_finalize;
 }
 
-GDBusInterfaceSkeleton *
-settings_create (GDBusConnection *connection,
-                 GPtrArray       *implementations)
+void
+settings_create (XdpDesktopPortal *desktop_portal)
 {
+  GDBusConnection *connection =
+    xdp_desktop_portal_get_connection (desktop_portal);
+  XdpPortalImpls *portal_impls = xdp_desktop_portal_get_impls (desktop_portal);
+  g_autoptr(GPtrArray) impls = NULL;
   g_autoptr(Settings) settings = NULL;
+  g_autoptr(GPtrArray) impl_proxies = NULL;
   g_autoptr(GError) error = NULL;
-  int i;
-  int n_impls_tmp;
 
-  n_impls_tmp = implementations->len;
-  impls = g_new (XdpDbusImplSettings *, n_impls_tmp);
+  impls = xdp_portal_impls_find_all (portal_impls, SETTINGS_DBUS_IMPL_IFACE);
+  if (impls->len == 0)
+    {
+      g_debug ("Not providing Settings portal: No backend configured");
+      return;
+    }
 
   settings = g_object_new (settings_get_type (), NULL);
 
-  for (i = 0; i < n_impls_tmp; i++)
-    {
-      XdpPortalImplementation *impl = g_ptr_array_index (implementations, i);
-      const char *dbus_name = impl->dbus_name;
+  impl_proxies = g_ptr_array_new_with_free_func (g_object_unref);
 
-      XdpDbusImplSettings *impl_proxy =
+  for (size_t i = 0; i < impls->len; i++)
+    {
+      XdpPortalImplementation *impl = g_ptr_array_index (impls, i);
+      const char *dbus_name = impl->dbus_name;
+      g_autoptr(XdpDbusImplSettings) impl_proxy = NULL;
+      g_autoptr(GError) error = NULL;
+
+      impl_proxy =
         xdp_dbus_impl_settings_proxy_new_sync (connection,
                                                G_DBUS_PROXY_FLAGS_NONE,
                                                dbus_name,
-                                               DESKTOP_PORTAL_OBJECT_PATH,
+                                               DESKTOP_DBUS_PATH,
                                                NULL,
                                                &error);
       if (impl_proxy == NULL)
@@ -303,15 +329,37 @@ settings_create (GDBusConnection *connection,
         }
       else
         {
-          impls[n_impls++] = impl_proxy;
-          g_signal_connect (impl_proxy, "setting-changed", G_CALLBACK (on_impl_settings_changed), settings);
+          g_signal_connect (impl_proxy,
+                            "setting-changed",
+                            G_CALLBACK (on_impl_settings_changed),
+                            settings);
+
+          g_ptr_array_add (impl_proxies, g_steal_pointer (&impl_proxy));
         }
     }
 
-  if (!n_impls)
+  if (impl_proxies->len == 0)
     {
-      return NULL;
+      g_warning ("Not providing Settings portal: No working backend");
+      return;
     }
 
-  return G_DBUS_INTERFACE_SKELETON (g_steal_pointer (&settings));
+  settings->n_impls = impl_proxies->len;
+  settings->impls = (XdpDbusImplSettings **) g_ptr_array_steal (impl_proxies, NULL);
+
+  if (xdp_desktop_portal_export (desktop_portal,
+                                 G_DBUS_INTERFACE_SKELETON (settings),
+                                 &error))
+    {
+      g_object_set_data_full (G_OBJECT (desktop_portal),
+                              "-portal-settings",
+                              g_steal_pointer (&settings),
+                              g_object_unref);
+
+      g_debug ("Providing Settings portal");
+    }
+  else
+    {
+      g_warning ("Not providing Settings portal: %s", error->message);
+    }
 }

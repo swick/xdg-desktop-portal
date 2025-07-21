@@ -26,19 +26,21 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
-
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-
 #include <gio/gio.h>
 #include <gio/gunixfdlist.h>
 
-#include "secret.h"
 #include "xdp-request.h"
 #include "xdp-dbus.h"
 #include "xdp-impl-dbus.h"
 #include "xdp-utils.h"
+#include "xdp-portal-impl.h"
+
+#include "secret.h"
+
+#define SECRET_DBUS_IMPL_IFACE DESKTOP_DBUS_IMPL_IFACE ".Secret"
 
 typedef struct _Secret Secret;
 typedef struct _SecretClass SecretClass;
@@ -46,6 +48,8 @@ typedef struct _SecretClass SecretClass;
 struct _Secret
 {
   XdpDbusSecretSkeleton parent_instance;
+
+  XdpDbusImplSecret *impl;
 };
 
 struct _SecretClass
@@ -53,15 +57,14 @@ struct _SecretClass
   XdpDbusSecretSkeletonClass parent_class;
 };
 
-static XdpDbusImplSecret *impl;
-static Secret *secret;
-
 GType secret_get_type (void) G_GNUC_CONST;
 static void secret_iface_init (XdpDbusSecretIface *iface);
 
 G_DEFINE_TYPE_WITH_CODE (Secret, secret, XDP_DBUS_TYPE_SECRET_SKELETON,
                          G_IMPLEMENT_INTERFACE (XDP_DBUS_TYPE_SECRET,
                                                 secret_iface_init));
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (Secret, g_object_unref)
 
 static XdpOptionKey retrieve_secret_options[] = {
   { "token", G_VARIANT_TYPE_STRING, NULL },
@@ -121,12 +124,13 @@ retrieve_secret_done (GObject *source,
 }
 
 static gboolean
-handle_retrieve_secret (XdpDbusSecret *object,
-			GDBusMethodInvocation *invocation,
-			GUnixFDList *fd_list,
-			GVariant *arg_fd,
-			GVariant *arg_options)
+handle_retrieve_secret (XdpDbusSecret         *object,
+                        GDBusMethodInvocation *invocation,
+                        GUnixFDList           *fd_list,
+                        GVariant              *arg_fd,
+                        GVariant              *arg_options)
 {
+  Secret *secret = (Secret *) object;
   XdpRequest *request = xdp_request_from_invocation (invocation);
   const char *app_id = xdp_app_info_get_id (request->app_info);
   g_autoptr(GError) error = NULL;
@@ -136,12 +140,13 @@ handle_retrieve_secret (XdpDbusSecret *object,
 
   REQUEST_AUTOLOCK (request);
 
-  impl_request =
-    xdp_dbus_impl_request_proxy_new_sync (g_dbus_proxy_get_connection (G_DBUS_PROXY (impl)),
-                                          G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES,
-                                          g_dbus_proxy_get_name (G_DBUS_PROXY (impl)),
-                                          request->id,
-                                          NULL, &error);
+  impl_request = xdp_dbus_impl_request_proxy_new_sync (
+    g_dbus_proxy_get_connection (G_DBUS_PROXY (secret->impl)),
+    G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES,
+    g_dbus_proxy_get_name (G_DBUS_PROXY (secret->impl)),
+    request->id,
+    NULL, &error);
+
   if (!impl_request)
     {
       g_dbus_method_invocation_return_gerror (invocation, error);
@@ -161,7 +166,7 @@ handle_retrieve_secret (XdpDbusSecret *object,
 
   xdp_dbus_secret_complete_retrieve_secret (object, invocation, NULL, request->id);
 
-  xdp_dbus_impl_secret_call_retrieve_secret (impl,
+  xdp_dbus_impl_secret_call_retrieve_secret (secret->impl,
                                              request->id,
                                              app_id,
                                              arg_fd,
@@ -183,7 +188,6 @@ secret_iface_init (XdpDbusSecretIface *iface)
 static void
 secret_init (Secret *secret)
 {
-  xdp_dbus_secret_set_version (XDP_DBUS_SECRET (secret), 1);
 }
 
 static void
@@ -191,27 +195,55 @@ secret_class_init (SecretClass *klass)
 {
 }
 
-GDBusInterfaceSkeleton *
-secret_create (GDBusConnection *connection,
-	       const char      *dbus_name)
+void
+secret_create (XdpDesktopPortal *desktop_portal)
 {
+  g_autoptr(Secret) secret = NULL;
+  GDBusConnection *connection =
+    xdp_desktop_portal_get_connection (desktop_portal);
+  XdpPortalImpls *portal_impls = xdp_desktop_portal_get_impls (desktop_portal);
+  XdpPortalImplementation *impl;
   g_autoptr(GError) error = NULL;
 
-  impl = xdp_dbus_impl_secret_proxy_new_sync (connection,
-                                              G_DBUS_PROXY_FLAGS_NONE,
-                                              dbus_name,
-                                              DESKTOP_PORTAL_OBJECT_PATH,
-                                              NULL,
-                                              &error);
-  if (impl == NULL)
+  impl = xdp_portal_impls_find (portal_impls, SECRET_DBUS_IMPL_IFACE);
+  if (!impl)
     {
-      g_warning ("Failed to create secret proxy: %s", error->message);
-      return NULL;
+      g_debug ("Not providing Secret portal: No backend configured");
+      return;
     }
 
-  g_dbus_proxy_set_default_timeout (G_DBUS_PROXY (impl), G_MAXINT);
-
   secret = g_object_new (secret_get_type (), NULL);
+  secret->impl =
+    xdp_dbus_impl_secret_proxy_new_sync (connection,
+                                         G_DBUS_PROXY_FLAGS_NONE,
+                                         impl->dbus_name,
+                                         DESKTOP_DBUS_PATH,
+                                         NULL,
+                                         &error);
 
-  return G_DBUS_INTERFACE_SKELETON (secret);
+  if (!secret->impl)
+    {
+      g_warning ("Not providing Secret portal: No working backend");
+      return;
+    }
+
+  g_dbus_proxy_set_default_timeout (G_DBUS_PROXY (secret->impl), G_MAXINT);
+
+  xdp_dbus_secret_set_version (XDP_DBUS_SECRET (secret), 1);
+
+  if (xdp_desktop_portal_export (desktop_portal,
+                                 G_DBUS_INTERFACE_SKELETON (secret),
+                                 &error))
+    {
+      g_object_set_data_full (G_OBJECT (desktop_portal),
+                              "-portal-secret",
+                              g_steal_pointer (&secret),
+                              g_object_unref);
+
+      g_debug ("Providing Secret portal");
+    }
+  else
+    {
+      g_warning ("Not providing Secret portal: %s", error->message);
+    }
 }

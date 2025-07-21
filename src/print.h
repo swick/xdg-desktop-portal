@@ -24,6 +24,6 @@
 
 #include <gio/gio.h>
 
-GDBusInterfaceSkeleton * print_create (GDBusConnection *connection,
-                                       const char      *dbus_name,
-                                       gpointer         lockdown);
+#include "xdp-desktop-portal.h"
+
+void print_create (XdpDesktopPortal *desktop_portal);

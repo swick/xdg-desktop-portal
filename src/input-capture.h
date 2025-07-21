@@ -21,7 +21,7 @@
 #pragma once
 
 #include <gio/gio.h>
-#include <stdint.h>
 
-GDBusInterfaceSkeleton * input_capture_create (GDBusConnection *connection,
-                                               const char      *dbus_name);
+#include "xdp-desktop-portal.h"
+
+void input_capture_create (XdpDesktopPortal *desktop_portal);

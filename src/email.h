@@ -24,5 +24,6 @@
 
 #include <gio/gio.h>
 
-GDBusInterfaceSkeleton * email_create (GDBusConnection *connection,
-                                       const char      *dbus_name);
+#include "xdp-desktop-portal.h"
+
+void email_create (XdpDesktopPortal *desktop_portal);

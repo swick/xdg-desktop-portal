@@ -62,6 +62,18 @@
 
 #include "xdp-desktop-portal.h"
 
+#define ACCESS_DBUS_IMPL_IFACE DESKTOP_DBUS_IMPL_IFACE ".Access"
+#define LOCKDOWN_DBUS_IMPL_IFACE DESKTOP_DBUS_IMPL_IFACE ".Lockdown"
+
+enum
+{
+  PEER_DIED,
+
+  N_SIGNALS
+};
+
+static guint signals[N_SIGNALS];
+
 struct _XdpDesktopPortal
 {
   GObject parent_instance;
@@ -69,6 +81,9 @@ struct _XdpDesktopPortal
   gboolean verbose;
 
   XdpPortalImpls *portal_impls;
+  GDBusConnection *connection;
+
+  XdpDbusImplLockdown *lockdown;
 };
 
 G_DEFINE_FINAL_TYPE (XdpDesktopPortal, xdp_desktop_portal, G_TYPE_OBJECT)
@@ -80,6 +95,8 @@ xdp_desktop_portal_dispose (GObject *object)
 
   g_clear_object (&desktop_portal->portal_impls);
 
+  g_clear_object (&desktop_portal->lockdown);
+
   G_OBJECT_CLASS (xdp_desktop_portal_parent_class)->dispose (object);
 }
 
@@ -89,6 +106,15 @@ xdp_desktop_portal_class_init (XdpDesktopPortalClass *klass)
   GObjectClass *object_class = G_OBJECT_CLASS (klass);
 
   object_class->dispose = xdp_desktop_portal_dispose;
+
+  signals[PEER_DIED] =
+    g_signal_new ("peer-died",
+                  G_TYPE_FROM_CLASS (klass),
+                  G_SIGNAL_RUN_LAST,
+                  0,
+                  NULL, NULL, NULL,
+                  G_TYPE_NONE, 1,
+                  G_TYPE_STRING);
 }
 
 static void
@@ -106,6 +132,50 @@ xdp_desktop_portal_new (gboolean opt_verbose)
   desktop_portal->portal_impls = xdp_portal_impls_new (desktop_portal);
 
   return desktop_portal;
+}
+
+GDBusConnection *
+xdp_desktop_portal_get_connection (XdpDesktopPortal *desktop_portal)
+{
+  return desktop_portal->connection;
+}
+
+XdpPortalImpls *
+xdp_desktop_portal_get_impls (XdpDesktopPortal *desktop_portal)
+{
+  return desktop_portal->portal_impls;
+}
+
+XdpDbusImplLockdown *
+xdp_desktop_portal_get_lockdown_proxy (XdpDesktopPortal *desktop_portal)
+{
+  /* we share the lockdown proxy between portals */
+  return g_object_ref (desktop_portal->lockdown);
+}
+
+XdpDbusImplAccess *
+xdp_desktop_portal_get_access_proxy (XdpDesktopPortal *desktop_portal)
+{
+  XdpPortalImplementation *impl;
+  XdpDbusImplAccess *access_impl;
+
+  impl = xdp_portal_impls_find (desktop_portal->portal_impls,
+                                ACCESS_DBUS_IMPL_IFACE);
+
+  if (!impl)
+    return NULL;
+
+  access_impl =
+    xdp_dbus_impl_access_proxy_new_sync (desktop_portal->connection,
+                                         G_DBUS_PROXY_FLAGS_NONE,
+                                         impl->dbus_name,
+                                         DESKTOP_DBUS_PATH,
+                                         NULL, NULL);
+
+  if (access_impl)
+    g_dbus_proxy_set_default_timeout (G_DBUS_PROXY (access_impl), G_MAXINT);
+
+  return access_impl;
 }
 
 gboolean
@@ -127,10 +197,12 @@ method_needs_request (GDBusMethodInvocation *invocation)
   method_info = xdp_method_info_find (interface, method);
 
   if (!method_info)
-    g_warning ("Support for %s::%s missing in %s",
-               interface, method, G_STRLOC);
+    {
+      g_warning ("Support for %s::%s missing in %s",
+                 interface, method, G_STRLOC);
+    }
 
-  return method_info ?  method_info->uses_request : TRUE;
+  return method_info ? method_info->uses_request : TRUE;
 }
 
 static gboolean
@@ -147,7 +219,8 @@ authorize_callback (GDBusInterfaceSkeleton *interface,
       g_dbus_method_invocation_return_error (invocation,
                                              G_DBUS_ERROR,
                                              G_DBUS_ERROR_ACCESS_DENIED,
-                                             "Portal operation not allowed: %s", error->message);
+                                             "Portal operation not allowed: %s",
+                                             error->message);
       return FALSE;
     }
 
@@ -159,38 +232,30 @@ authorize_callback (GDBusInterfaceSkeleton *interface,
   return TRUE;
 }
 
-static void
-export_portal_implementation (GDBusConnection *connection,
-                              GDBusInterfaceSkeleton *skeleton)
+gboolean
+xdp_desktop_portal_export (XdpDesktopPortal        *desktop_portal,
+                           GDBusInterfaceSkeleton  *skeleton,
+                           GError                 **error)
 {
-  g_autoptr(GError) error = NULL;
+  g_return_val_if_fail (G_IS_DBUS_INTERFACE_SKELETON (skeleton), FALSE);
 
-  if (skeleton == NULL)
-    {
-      g_warning ("No skeleton to export");
-      return;
-    }
+  g_dbus_interface_skeleton_set_flags (
+    skeleton,
+    G_DBUS_INTERFACE_SKELETON_FLAGS_HANDLE_METHOD_INVOCATIONS_IN_THREAD);
 
-  g_dbus_interface_skeleton_set_flags (skeleton,
-                                       G_DBUS_INTERFACE_SKELETON_FLAGS_HANDLE_METHOD_INVOCATIONS_IN_THREAD);
   g_signal_connect (skeleton, "g-authorize-method",
                     G_CALLBACK (authorize_callback), NULL);
 
-  if (!g_dbus_interface_skeleton_export (skeleton,
-                                         connection,
-                                         DESKTOP_PORTAL_OBJECT_PATH,
-                                         &error))
-    {
-      g_warning ("Error: %s", error->message);
-      return;
-    }
-
-  g_debug ("providing portal %s", g_dbus_interface_skeleton_get_info (skeleton)->name);
+  return g_dbus_interface_skeleton_export (skeleton,
+                                           desktop_portal->connection,
+                                           DESKTOP_DBUS_PATH,
+                                           error);
 }
 
-static void
-export_host_portal_implementation (GDBusConnection        *connection,
-                                   GDBusInterfaceSkeleton *skeleton)
+gboolean
+xdp_desktop_portal_export_host (XdpDesktopPortal        *desktop_portal,
+                                GDBusInterfaceSkeleton  *skeleton,
+                                GError                 **error)
 {
   /* Host portal dbus method invocations run in the main thread without yielding
    * to the main loop. This means that any later method call of any portal will
@@ -200,35 +265,100 @@ export_host_portal_implementation (GDBusConnection        *connection,
    * method calls must see the modified value.
    */
 
-  g_autoptr(GError) error = NULL;
-
-  if (skeleton == NULL)
-    {
-      g_warning ("No skeleton to export");
-      return;
-    }
+  g_return_val_if_fail (G_IS_DBUS_INTERFACE_SKELETON (skeleton), FALSE);
 
   g_dbus_interface_skeleton_set_flags (skeleton,
                                        G_DBUS_INTERFACE_SKELETON_FLAGS_NONE);
 
-  if (!g_dbus_interface_skeleton_export (skeleton,
-                                         connection,
-                                         DESKTOP_PORTAL_OBJECT_PATH,
-                                         &error))
-    {
-      g_warning ("Error: %s", error->message);
-      return;
-    }
-
-  g_debug ("providing portal %s", g_dbus_interface_skeleton_get_info (skeleton)->name);
+  return g_dbus_interface_skeleton_export (skeleton,
+                                           desktop_portal->connection,
+                                           DESKTOP_DBUS_PATH,
+                                           error);
 }
 
 static void
-on_peer_died (const char *name)
+export_portals (XdpDesktopPortal *desktop_portal)
+{
+  memory_monitor_create (desktop_portal);
+  power_profile_monitor_create (desktop_portal);
+  network_monitor_create (desktop_portal);
+  proxy_resolver_create (desktop_portal);
+  trash_create (desktop_portal);
+  game_mode_create (desktop_portal);
+  realtime_create (desktop_portal);
+  settings_create (desktop_portal);
+  file_chooser_create (desktop_portal);
+  open_uri_create (desktop_portal);
+  print_create (desktop_portal);
+  notification_create (desktop_portal);
+  inhibit_create (desktop_portal);
+#ifdef HAVE_GEOCLUE
+  location_create (desktop_portal);
+#endif
+  camera_create (desktop_portal);
+  screenshot_create (desktop_portal);
+  background_create (desktop_portal);
+  wallpaper_create (desktop_portal);
+  account_create (desktop_portal);
+  email_create (desktop_portal);
+  secret_create (desktop_portal);
+  global_shortcuts_create (desktop_portal);
+  dynamic_launcher_create (desktop_portal);
+  screen_cast_create (desktop_portal);
+  remote_desktop_create (desktop_portal);
+  clipboard_create (desktop_portal);
+  input_capture_create (desktop_portal);
+#ifdef HAVE_GUDEV
+  xdp_usb_create (desktop_portal);
+#endif
+  registry_create (desktop_portal);
+}
+
+static void
+on_peer_died (XdpDesktopPortal *desktop_portal,
+              const char       *name,
+              gpointer          user_data)
 {
   close_requests_for_sender (name);
   close_sessions_for_sender (name);
   xdp_session_persistence_delete_transient_permissions_for_sender (name);
+  xdp_app_info_delete_for_sender (name);
+}
+
+static void
+on_name_owner_changed (GDBusConnection *connection,
+                       const gchar     *sender_name,
+                       const gchar     *object_path,
+                       const gchar     *interface_name,
+                       const gchar     *signal_name,
+                       GVariant        *parameters,
+                       gpointer         user_data)
+{
+  XdpDesktopPortal *desktop_portal = user_data;
+  const char *name, *from, *to;
+
+  g_variant_get (parameters, "(&s&s&s)", &name, &from, &to);
+
+  if (name[0] != ':' ||
+      strcmp (name, from) != 0 ||
+      strcmp (to, "") != 0)
+    return;
+
+  g_signal_emit (desktop_portal, signals[PEER_DIED], 0, name);
+}
+
+static void
+track_name_owners (XdpDesktopPortal *desktop_portal)
+{
+  g_dbus_connection_signal_subscribe (desktop_portal->connection,
+                                      DBUS_DBUS_NAME,
+                                      DBUS_DBUS_IFACE,
+                                      "NameOwnerChanged",
+                                      DBUS_DBUS_PATH,
+                                      NULL,
+                                      G_DBUS_SIGNAL_FLAGS_NONE,
+                                      on_name_owner_changed,
+                                      desktop_portal, NULL);
 }
 
 gboolean
@@ -237,17 +367,18 @@ xdp_desktop_portal_register (XdpDesktopPortal  *desktop_portal,
                              GError           **error)
 {
   XdpPortalImpls *portal_impls = desktop_portal->portal_impls;
-  XdpPortalImplementation *implementation;
-  XdpDbusImplLockdown *lockdown;
   XdpPortalImplementation *lockdown_impl;
-  XdpPortalImplementation *access_impl;
   GQuark portal_errors G_GNUC_UNUSED;
-  GPtrArray *impls;
+
+  desktop_portal->connection = connection;
 
   /* make sure errors are registered */
   portal_errors = XDG_DESKTOP_PORTAL_ERROR;
 
-  xdp_connection_track_name_owners (connection, on_peer_died);
+  track_name_owners (desktop_portal);
+  g_signal_connect (desktop_portal, "peer-died",
+                    G_CALLBACK (on_peer_died),
+                    NULL);
 
   if (!xdp_init_permission_store (connection, error))
     {
@@ -261,147 +392,21 @@ xdp_desktop_portal_register (XdpDesktopPortal  *desktop_portal,
       return FALSE;
     }
 
-  lockdown_impl = xdp_portal_impls_find (portal_impls, "org.freedesktop.impl.portal.Lockdown");
-  if (lockdown_impl != NULL)
-    lockdown = xdp_dbus_impl_lockdown_proxy_new_sync (connection,
-                                                      G_DBUS_PROXY_FLAGS_NONE,
-                                                      lockdown_impl->dbus_name,
-                                                      DESKTOP_PORTAL_OBJECT_PATH,
-                                                      NULL, NULL);
-
-  if (lockdown == NULL)
-    lockdown = xdp_dbus_impl_lockdown_skeleton_new ();
-
-  export_portal_implementation (connection, memory_monitor_create (connection));
-  export_portal_implementation (connection, power_profile_monitor_create (connection));
-  export_portal_implementation (connection, network_monitor_create (connection));
-  export_portal_implementation (connection, proxy_resolver_create (connection));
-  export_portal_implementation (connection, trash_create (connection));
-  export_portal_implementation (connection, game_mode_create (connection));
-  export_portal_implementation (connection, realtime_create (connection));
-
-  impls = xdp_portal_impls_find_all (portal_impls, "org.freedesktop.impl.portal.Settings");
-  if (impls->len > 0)
-    export_portal_implementation (connection, settings_create (connection, impls));
-  g_ptr_array_free (impls, TRUE);
-
-  implementation = xdp_portal_impls_find (portal_impls, "org.freedesktop.impl.portal.FileChooser");
-  if (implementation != NULL)
-    export_portal_implementation (connection,
-                                  file_chooser_create (connection, implementation->dbus_name, lockdown));
-
-  implementation = xdp_portal_impls_find (portal_impls, "org.freedesktop.impl.portal.AppChooser");
-  if (implementation != NULL)
-    export_portal_implementation (connection,
-                                  open_uri_create (connection, implementation->dbus_name, lockdown));
-
-  implementation = xdp_portal_impls_find (portal_impls, "org.freedesktop.impl.portal.Print");
-  if (implementation != NULL)
-    export_portal_implementation (connection,
-                                  print_create (connection, implementation->dbus_name, lockdown));
-
-  implementation = xdp_portal_impls_find (portal_impls, "org.freedesktop.impl.portal.Notification");
-  if (implementation != NULL)
-    export_portal_implementation (connection,
-                                  notification_create (connection, implementation->dbus_name));
-
-  implementation = xdp_portal_impls_find (portal_impls, "org.freedesktop.impl.portal.Inhibit");
-  if (implementation != NULL)
-    export_portal_implementation (connection,
-                                  inhibit_create (connection, implementation->dbus_name));
-
-  access_impl = xdp_portal_impls_find (portal_impls, "org.freedesktop.impl.portal.Access");
-  if (access_impl != NULL)
+  lockdown_impl = xdp_portal_impls_find (portal_impls, LOCKDOWN_DBUS_IMPL_IFACE);
+  if (lockdown_impl)
     {
-      XdpPortalImplementation *tmp;
-
-#ifdef HAVE_GEOCLUE
-      export_portal_implementation (connection,
-                                    location_create (connection,
-                                                     access_impl->dbus_name,
-                                                     lockdown));
-#endif
-
-      export_portal_implementation (connection,
-                                    camera_create (connection,
-                                                   access_impl->dbus_name,
-                                                   lockdown));
-
-      tmp = xdp_portal_impls_find (portal_impls, "org.freedesktop.impl.portal.Screenshot");
-      if (tmp != NULL)
-        export_portal_implementation (connection,
-                                      screenshot_create (connection,
-                                                         access_impl->dbus_name,
-                                                         tmp->dbus_name));
-
-      tmp = xdp_portal_impls_find (portal_impls, "org.freedesktop.impl.portal.Background");
-      if (tmp != NULL)
-        export_portal_implementation (connection,
-                                      background_create (connection,
-                                                         access_impl->dbus_name,
-                                                         tmp->dbus_name));
-
-      tmp = xdp_portal_impls_find (portal_impls, "org.freedesktop.impl.portal.Wallpaper");
-      if (tmp != NULL)
-        export_portal_implementation (connection,
-                                      wallpaper_create (connection,
-                                                        access_impl->dbus_name,
-                                                        tmp->dbus_name));
+      desktop_portal->lockdown =
+          xdp_dbus_impl_lockdown_proxy_new_sync (connection,
+                                                 G_DBUS_PROXY_FLAGS_NONE,
+                                                 lockdown_impl->dbus_name,
+                                                 DESKTOP_DBUS_PATH,
+                                                 NULL, NULL);
     }
 
-  implementation = xdp_portal_impls_find (portal_impls, "org.freedesktop.impl.portal.Account");
-  if (implementation != NULL)
-    export_portal_implementation (connection,
-                                  account_create (connection, implementation->dbus_name));
+  if (!desktop_portal->lockdown)
+    desktop_portal->lockdown = xdp_dbus_impl_lockdown_skeleton_new ();
 
-  implementation = xdp_portal_impls_find (portal_impls, "org.freedesktop.impl.portal.Email");
-  if (implementation != NULL)
-    export_portal_implementation (connection,
-                                  email_create (connection, implementation->dbus_name));
-
-  implementation = xdp_portal_impls_find (portal_impls, "org.freedesktop.impl.portal.Secret");
-  if (implementation != NULL)
-    export_portal_implementation (connection,
-                                  secret_create (connection, implementation->dbus_name));
-
-  implementation = xdp_portal_impls_find (portal_impls, "org.freedesktop.impl.portal.GlobalShortcuts");
-  if (implementation != NULL)
-    export_portal_implementation (connection,
-                                  global_shortcuts_create (connection, implementation->dbus_name));
-
-  implementation = xdp_portal_impls_find (portal_impls, "org.freedesktop.impl.portal.DynamicLauncher");
-  if (implementation != NULL)
-    export_portal_implementation (connection,
-                                  dynamic_launcher_create (connection, implementation->dbus_name));
-
-  implementation = xdp_portal_impls_find (portal_impls, "org.freedesktop.impl.portal.ScreenCast");
-  if (implementation != NULL)
-    export_portal_implementation (connection,
-                                  screen_cast_create (connection, implementation->dbus_name));
-
-  implementation = xdp_portal_impls_find (portal_impls, "org.freedesktop.impl.portal.RemoteDesktop");
-  if (implementation != NULL)
-    export_portal_implementation (connection,
-                                  remote_desktop_create (connection, implementation->dbus_name));
-
-  implementation = xdp_portal_impls_find (portal_impls, "org.freedesktop.impl.portal.Clipboard");
-  if (implementation != NULL)
-    export_portal_implementation (
-        connection, clipboard_create (connection, implementation->dbus_name));
-
-  implementation = xdp_portal_impls_find (portal_impls, "org.freedesktop.impl.portal.InputCapture");
-  if (implementation != NULL)
-    export_portal_implementation (connection,
-                                  input_capture_create (connection, implementation->dbus_name));
-
-#ifdef HAVE_GUDEV
-  implementation = xdp_portal_impls_find (portal_impls, "org.freedesktop.impl.portal.Usb");
-  if (implementation != NULL)
-    export_portal_implementation (connection,
-                                  xdp_usb_create (connection, implementation->dbus_name));
-#endif
-
-  export_host_portal_implementation (connection, registry_create (connection));
+  export_portals (desktop_portal);
 
   return TRUE;
 }

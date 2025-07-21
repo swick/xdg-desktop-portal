@@ -42,6 +42,8 @@
 #include <sys/wait.h>
 #include <unistd.h> /* unlinkat, fork */
 
+#include "gamemode.h"
+
 /* well known names*/
 #define GAMEMODE_DBUS_NAME "com.feralinteractive.GameMode"
 #define GAMEMODE_DBUS_IFACE "com.feralinteractive.GameMode"
@@ -99,11 +101,6 @@ static gboolean handle_unregister_game_by_pidfd (XdpDbusGameMode *object,
                                                  GVariant *arg_target,
                                                  GVariant *arg_requester);
 
-
-
-/* globals  */
-static GameMode *gamemode;
-
 /* gobject  */
 
 struct _GameMode
@@ -125,6 +122,8 @@ static void game_mode_iface_init (XdpDbusGameModeIface *iface);
 G_DEFINE_TYPE_WITH_CODE (GameMode, game_mode, XDP_DBUS_TYPE_GAME_MODE_SKELETON,
                          G_IMPLEMENT_INTERFACE (XDP_DBUS_TYPE_GAME_MODE,
                                                 game_mode_iface_init));
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (GameMode, g_object_unref)
 
 static void
 game_mode_iface_init (XdpDbusGameModeIface *iface)
@@ -222,6 +221,7 @@ check_pids(const pid_t *pids, gint count, GError **error)
 typedef struct CallData_ {
   GDBusMethodInvocation *inv;
   XdpAppInfo *app_info;
+  GDBusProxy *client;
 
   char *method;
 
@@ -235,7 +235,8 @@ typedef struct CallData_ {
 static CallData *
 call_data_new (GDBusMethodInvocation *inv,
                XdpAppInfo            *app_info,
-               const char            *method)
+               const char            *method,
+               GDBusProxy            *client)
 {
   CallData *call;
 
@@ -244,6 +245,7 @@ call_data_new (GDBusMethodInvocation *inv,
   call->inv = g_object_ref (inv);
   call->app_info = g_object_ref (app_info);
   call->method = g_strdup (method);
+  call->client = g_object_ref (client);
 
   return call;
 }
@@ -259,6 +261,7 @@ call_data_free (gpointer data)
   g_clear_object (&call->app_info);
   g_clear_pointer (&call->method, g_free);
   g_clear_object (&call->fdlist);
+  g_clear_object (&call->client);
 
   g_slice_free (CallData, call);
 }
@@ -348,7 +351,7 @@ handle_call_thread (GTask        *task,
       params = g_variant_new ("(hh)", 0, 1);
     }
 
-  res = g_dbus_proxy_call_with_unix_fd_list_sync (G_DBUS_PROXY (gamemode->client),
+  res = g_dbus_proxy_call_with_unix_fd_list_sync (G_DBUS_PROXY (call->client),
                                                   call->method,
                                                   params,
                                                   G_DBUS_CALL_FLAGS_NONE,
@@ -373,6 +376,7 @@ handle_call_in_thread_fds (XdpDbusGameMode       *object,
                            GDBusMethodInvocation *invocation,
                            GUnixFDList           *fdlist)
 {
+  GameMode *gamemode = (GameMode *)object;
   g_autoptr(GTask) task = NULL;
   XdpAppInfo *app_info;
   XdpCall *call;
@@ -388,7 +392,7 @@ handle_call_in_thread_fds (XdpDbusGameMode       *object,
   call = xdp_call_from_invocation (invocation);
   app_info = call->app_info;
 
-  call_data = call_data_new (invocation, app_info, method);
+  call_data = call_data_new (invocation, app_info, method, gamemode->client);
   call_data->fdlist = g_object_ref (fdlist);
 
   task = g_task_new (object, NULL, NULL, NULL);
@@ -404,6 +408,7 @@ handle_call_in_thread (XdpDbusGameMode       *object,
                        gint                   target,
                        gint                   requester)
 {
+  GameMode *gamemode = (GameMode *)object;
   g_autoptr(GTask) task = NULL;
   XdpAppInfo *app_info;
   XdpCall *call;
@@ -412,7 +417,7 @@ handle_call_in_thread (XdpDbusGameMode       *object,
   call = xdp_call_from_invocation (invocation);
   app_info = call->app_info;
 
-  call_data = call_data_new (invocation, app_info, method);
+  call_data = call_data_new (invocation, app_info, method, gamemode->client);
 
   call_data->ids[0] = target;
   call_data->n_ids = 1;
@@ -548,45 +553,47 @@ handle_unregister_game_by_pidfd (XdpDbusGameMode *object,
 
 /* properties */
 static void
-update_active_state (GVariant *client_count)
+update_active_state (GameMode *gamemode,
+                     GVariant *client_count)
 {
   gboolean enabled = g_variant_get_int32 (client_count) > 0;
   xdp_dbus_game_mode_set_active (XDP_DBUS_GAME_MODE (gamemode), enabled);
 }
 
 static void
-update_active_state_from_cache (GDBusProxy *proxy)
+update_active_state_from_cache (GameMode   *gamemode,
+                                GDBusProxy *proxy)
 {
   g_autoptr(GVariant) client_count = NULL;
 
   client_count = g_dbus_proxy_get_cached_property (proxy, "ClientCount");
 
   if (client_count != NULL)
-    update_active_state (client_count);
+    update_active_state (gamemode, client_count);
 }
 
 static void
-client_properties_changed (GDBusProxy *proxy,
-                           GVariant *changed_properties,
-                           char **invalidated_properties)
+on_client_properties_changed (GDBusProxy  *proxy,
+                              GVariant    *changed_properties,
+                              char       **invalidated_properties,
+                              gpointer     user_data)
 {
-  g_autoptr(GVariant) value = NULL;
+  GameMode *gamemode = user_data;
 
-  value = g_variant_lookup_value (changed_properties, "ClientCount",
-                                  G_VARIANT_TYPE_INT32);
-
-  if (value != NULL)
-    update_active_state (value);
+  update_active_state_from_cache (gamemode, proxy);
 }
 
 
 /* public API */
-GDBusInterfaceSkeleton *
-game_mode_create (GDBusConnection *connection)
+void
+game_mode_create (XdpDesktopPortal *desktop_portal)
 {
-  g_autoptr(GError) err = NULL;
-  GDBusProxy *client;
+  g_autoptr(GameMode) gamemode = NULL;
+  g_autoptr(GError) error = NULL;
+  g_autoptr(GDBusProxy) client = NULL;
   GDBusProxyFlags flags;
+  GDBusConnection *connection =
+    xdp_desktop_portal_get_connection (desktop_portal);
 
   flags = G_DBUS_PROXY_FLAGS_DO_NOT_AUTO_START_AT_CONSTRUCTION |
           G_DBUS_PROXY_FLAGS_GET_INVALIDATED_PROPERTIES;
@@ -597,21 +604,36 @@ game_mode_create (GDBusConnection *connection)
                                   GAMEMODE_DBUS_PATH,
                                   GAMEMODE_DBUS_IFACE,
                                   NULL,
-                                  &err);
+                                  &error);
 
   if (client == NULL)
     {
-      g_warning ("Failed to create GameMode proxy: %s", err->message);
-      return NULL;
+      g_warning ("Failed to create GameMode proxy: %s", error->message);
+      return;
     }
 
   gamemode = g_object_new (game_mode_get_type (), NULL);
-  gamemode->client = client;
+  gamemode->client = g_steal_pointer (&client);
 
-  g_signal_connect (client, "g-properties-changed",
-                    G_CALLBACK (client_properties_changed), NULL);
+  g_signal_connect (gamemode->client, "g-properties-changed",
+                    G_CALLBACK (on_client_properties_changed),
+                    gamemode);
 
-  update_active_state_from_cache (client);
+  update_active_state_from_cache (gamemode, gamemode->client);
 
-  return G_DBUS_INTERFACE_SKELETON (gamemode);;
+  if (xdp_desktop_portal_export (desktop_portal,
+                                 G_DBUS_INTERFACE_SKELETON (gamemode),
+                                 &error))
+    {
+      g_object_set_data_full (G_OBJECT (desktop_portal),
+                              "-portal-game-mode",
+                              g_steal_pointer (&gamemode),
+                              g_object_unref);
+
+      g_debug ("Providing Game Mode portal");
+    }
+  else
+    {
+      g_warning ("Not providing Game Mode portal: %s", error->message);
+    }
 }

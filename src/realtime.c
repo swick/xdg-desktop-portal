@@ -32,6 +32,10 @@
 #include "xdp-dbus.h"
 #include "xdp-utils.h"
 
+#define RTKIT_DBUS_NAME "org.freedesktop.RealtimeKit1"
+#define RTKIT_DBUS_IFACE "org.freedesktop.RealtimeKit1"
+#define RTKIT_DBUS_PATH "/org/freedesktop/RealtimeKit1"
+
 #define PERMISSION_TABLE "realtime"
 #define PERMISSION_ID "realtime"
 
@@ -49,14 +53,14 @@ struct _RealtimeClass
   XdpDbusRealtimeSkeletonClass parent_class;
 };
 
-static Realtime *realtime;
-
 GType realtime_get_type (void) G_GNUC_CONST;
 static void realtime_iface_init (XdpDbusRealtimeIface *iface);
 
 G_DEFINE_TYPE_WITH_CODE (Realtime, realtime, XDP_DBUS_TYPE_REALTIME_SKELETON,
                          G_IMPLEMENT_INTERFACE (XDP_DBUS_TYPE_REALTIME,
                                                 realtime_iface_init));
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (Realtime, g_object_unref)
 
 static gboolean
 map_pid (XdpAppInfo *app_info, pid_t *pid, pid_t *tid, GError **error)
@@ -119,6 +123,7 @@ handle_make_thread_realtime_with_pid (XdpDbusRealtime       *object,
                                       guint64                thread,
                                       guint32                priority)
 {
+  Realtime *realtime = (Realtime *)object;
   g_autoptr (GError) error = NULL;
   XdpCall *call = xdp_call_from_invocation (invocation);
   pid_t pids[1] = { process };
@@ -170,6 +175,7 @@ handle_make_thread_high_priority_with_pid (XdpDbusRealtime       *object,
                                            guint64                thread,
                                            gint32                 priority)
 {
+  Realtime *realtime = (Realtime *)object;
   g_autoptr (GError) error = NULL;
   XdpCall *call = xdp_call_from_invocation (invocation);
   pid_t pids[1] = { process };
@@ -246,8 +252,9 @@ realtime_class_init (RealtimeClass *klass)
 }
 
 static void
-load_all_properties (GDBusProxy *proxy)
+load_all_properties (Realtime *realtime)
 {
+  GDBusProxy *proxy = realtime->rtkit_proxy;
   const char * properties[] = { "MaxRealtimePriority", "MinNiceLevel", "RTTimeUSecMax" };
   enum prop_type { MAX_REALTIME_PRIORITY, MIN_NICE_LEVEL, RTTIME_USEC_MAX };
 
@@ -257,9 +264,9 @@ load_all_properties (GDBusProxy *proxy)
       GVariant *parameters;
       g_autoptr (GError) error = NULL;
 
-      parameters = g_variant_new ("(ss)", "org.freedesktop.RealtimeKit1", properties[i]);
+      parameters = g_variant_new ("(ss)", RTKIT_DBUS_IFACE, properties[i]);
       result = g_dbus_proxy_call_sync (proxy,
-                                       "org.freedesktop.DBus.Properties.Get",
+                                       DBUS_DBUS_IFACE ".Properties.Get",
                                         g_steal_pointer (&parameters),
                                         G_DBUS_CALL_FLAGS_NONE,
                                         -1,
@@ -292,18 +299,19 @@ load_all_properties (GDBusProxy *proxy)
     }
 }
 
-GDBusInterfaceSkeleton *
-realtime_create (GDBusConnection *connection)
+void
+realtime_create (XdpDesktopPortal *desktop_portal)
 {
-  GDBusProxy *rtkit_proxy = NULL;
-  g_autoptr (GError) error = NULL;
+  g_autoptr(Realtime) realtime = NULL;
+  g_autoptr(GError) error = NULL;
+  g_autoptr(GDBusProxy) rtkit_proxy = NULL;
 
   rtkit_proxy = g_dbus_proxy_new_for_bus_sync (G_BUS_TYPE_SYSTEM,
                                                G_DBUS_PROXY_FLAGS_NONE,
                                                NULL,
-                                               "org.freedesktop.RealtimeKit1",
-                                               "/org/freedesktop/RealtimeKit1",
-                                               "org.freedesktop.RealtimeKit1",
+                                               RTKIT_DBUS_NAME,
+                                               RTKIT_DBUS_PATH,
+                                               RTKIT_DBUS_IFACE,
                                                NULL,
                                                &error);
   if (!rtkit_proxy)
@@ -317,7 +325,21 @@ realtime_create (GDBusConnection *connection)
   realtime->rtkit_proxy = g_steal_pointer (&rtkit_proxy);
 
   if (realtime->rtkit_proxy)
-    load_all_properties (realtime->rtkit_proxy);
+    load_all_properties (realtime);
 
-  return G_DBUS_INTERFACE_SKELETON (realtime);
+  if (xdp_desktop_portal_export (desktop_portal,
+                                 G_DBUS_INTERFACE_SKELETON (realtime),
+                                 &error))
+    {
+      g_object_set_data_full (G_OBJECT (desktop_portal),
+                              "-portal-realtime",
+                              g_steal_pointer (&realtime),
+                              g_object_unref);
+
+      g_debug ("Providing Realtime portal");
+    }
+  else
+    {
+      g_warning ("Not providing Realtime portal: %s", error->message);
+    }
 }

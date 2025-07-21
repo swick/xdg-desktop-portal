@@ -26,19 +26,21 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
-
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-
 #include <gio/gio.h>
 
-#include "account.h"
 #include "xdp-request.h"
 #include "xdp-documents.h"
 #include "xdp-dbus.h"
 #include "xdp-impl-dbus.h"
 #include "xdp-utils.h"
+#include "xdp-portal-impl.h"
+
+#include "account.h"
+
+#define ACCOUNT_DBUS_IMPL_IFACE DESKTOP_DBUS_IMPL_IFACE ".Account"
 
 typedef struct _Account Account;
 typedef struct _AccountClass AccountClass;
@@ -46,6 +48,8 @@ typedef struct _AccountClass AccountClass;
 struct _Account
 {
   XdpDbusAccountSkeleton parent_instance;
+
+  XdpDbusImplAccount *impl;
 };
 
 struct _AccountClass
@@ -53,15 +57,14 @@ struct _AccountClass
   XdpDbusAccountSkeletonClass parent_class;
 };
 
-static XdpDbusImplAccount *impl;
-static Account *account;
-
 GType account_get_type (void) G_GNUC_CONST;
 static void account_iface_init (XdpDbusAccountIface *iface);
 
 G_DEFINE_TYPE_WITH_CODE (Account, account, XDP_DBUS_TYPE_ACCOUNT_SKELETON,
                          G_IMPLEMENT_INTERFACE (XDP_DBUS_TYPE_ACCOUNT,
                                                 account_iface_init));
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (Account, g_object_unref)
 
 static void
 send_response_in_thread_func (GTask        *task,
@@ -179,6 +182,7 @@ handle_get_user_information (XdpDbusAccount *object,
                              const gchar *arg_parent_window,
                              GVariant *arg_options)
 {
+  Account *account = (Account *) object;
   XdpRequest *request = xdp_request_from_invocation (invocation);
   const char *app_id = xdp_app_info_get_id (request->app_info);
   g_autoptr(GError) error = NULL;
@@ -190,11 +194,13 @@ handle_get_user_information (XdpDbusAccount *object,
 
   REQUEST_AUTOLOCK (request);
 
-  impl_request = xdp_dbus_impl_request_proxy_new_sync (g_dbus_proxy_get_connection (G_DBUS_PROXY (impl)),
-                                                       G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES,
-                                                       g_dbus_proxy_get_name (G_DBUS_PROXY (impl)),
-                                                       request->id,
-                                                       NULL, &error);
+  impl_request = xdp_dbus_impl_request_proxy_new_sync (
+    g_dbus_proxy_get_connection (G_DBUS_PROXY (account->impl)),
+    G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES,
+    g_dbus_proxy_get_name (G_DBUS_PROXY (account->impl)),
+    request->id,
+    NULL, &error);
+
   if (!impl_request)
     {
       g_dbus_method_invocation_return_gerror (invocation, error);
@@ -210,7 +216,7 @@ handle_get_user_information (XdpDbusAccount *object,
 
   g_debug ("options filtered");
 
-  xdp_dbus_impl_account_call_get_user_information (impl,
+  xdp_dbus_impl_account_call_get_user_information (account->impl,
                                                    request->id,
                                                    app_id,
                                                    arg_parent_window,
@@ -234,7 +240,6 @@ account_iface_init (XdpDbusAccountIface *iface)
 static void
 account_init (Account *account)
 {
-  xdp_dbus_account_set_version (XDP_DBUS_ACCOUNT (account), 1);
 }
 
 static void
@@ -242,29 +247,55 @@ account_class_init (AccountClass *klass)
 {
 }
 
-GDBusInterfaceSkeleton *
-account_create (GDBusConnection *connection,
-                const char      *dbus_name)
+void
+account_create (XdpDesktopPortal *desktop_portal)
 {
+  g_autoptr(Account) account = NULL;
+  GDBusConnection *connection =
+    xdp_desktop_portal_get_connection (desktop_portal);
+  XdpPortalImpls *portal_impls = xdp_desktop_portal_get_impls (desktop_portal);
+  XdpPortalImplementation *impl;
   g_autoptr(GError) error = NULL;
 
-  impl = xdp_dbus_impl_account_proxy_new_sync (connection,
-                                               G_DBUS_PROXY_FLAGS_NONE,
-                                               dbus_name,
-                                               DESKTOP_PORTAL_OBJECT_PATH,
-                                               NULL,
-                                               &error);
-
-  if (impl == NULL)
+  impl = xdp_portal_impls_find (portal_impls, ACCOUNT_DBUS_IMPL_IFACE);
+  if (!impl)
     {
-      g_warning ("Failed to create account proxy: %s", error->message);
-      return NULL;
+      g_debug ("Not providing Account portal: No backend configured");
+      return;
     }
 
-  g_debug ("using %s at %s\n", "org.freedesktop.impl.portal.Account", dbus_name);
-  g_dbus_proxy_set_default_timeout (G_DBUS_PROXY (impl), G_MAXINT);
-
   account = g_object_new (account_get_type (), NULL);
+  account->impl =
+    xdp_dbus_impl_account_proxy_new_sync (connection,
+                                          G_DBUS_PROXY_FLAGS_NONE,
+                                          impl->dbus_name,
+                                          DESKTOP_DBUS_PATH,
+                                          NULL,
+                                          &error);
 
-  return G_DBUS_INTERFACE_SKELETON (account);
+  if (!account->impl)
+    {
+      g_warning ("Not providing Account portal: No working backend");
+      return;
+    }
+
+  g_dbus_proxy_set_default_timeout (G_DBUS_PROXY (account->impl), G_MAXINT);
+
+  xdp_dbus_account_set_version (XDP_DBUS_ACCOUNT (account), 1);
+
+  if (xdp_desktop_portal_export (desktop_portal,
+                                 G_DBUS_INTERFACE_SKELETON (account),
+                                 &error))
+    {
+      g_object_set_data_full (G_OBJECT (desktop_portal),
+                              "-portal-account",
+                              g_steal_pointer (&account),
+                              g_object_unref);
+
+      g_debug ("Providing Account portal");
+    }
+  else
+    {
+      g_warning ("Not providing Account portal: %s", error->message);
+    }
 }

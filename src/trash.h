@@ -24,4 +24,6 @@
 
 #include <gio/gio.h>
 
-GDBusInterfaceSkeleton * trash_create (GDBusConnection *connection);
+#include "xdp-desktop-portal.h"
+
+void trash_create (XdpDesktopPortal *desktop_portal);

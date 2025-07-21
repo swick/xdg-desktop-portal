@@ -41,7 +41,6 @@
 
 #include <gudev/gudev.h>
 
-#include "usb.h"
 #include "xdp-request.h"
 #include "xdp-permissions.h"
 #include "xdp-session.h"
@@ -49,6 +48,12 @@
 #include "xdp-impl-dbus.h"
 #include "xdp-utils.h"
 #include "xdp-usb-query.h"
+#include "xdp-portal-impl.h"
+
+#include "usb.h"
+
+#define USB_DBUS_IFACE DESKTOP_DBUS_IFACE ".Usb"
+#define USB_DBUS_IMPL_IFACE DESKTOP_DBUS_IMPL_IFACE ".Usb"
 
 #define PERMISSION_TABLE "usb"
 #define PERMISSION_ID "usb"
@@ -65,6 +70,8 @@
 struct _XdpUsb
 {
   XdpDbusUsbSkeleton parent_instance;
+
+  XdpDbusImplUsb *impl;
 
   GHashTable *ids_to_devices;
   GHashTable *syspaths_to_ids;
@@ -87,6 +94,7 @@ struct _XdpUsbSession
 {
   XdpSession parent;
 
+  XdpUsb *usb;
   GHashTable *available_devices;
 };
 
@@ -124,9 +132,6 @@ typedef struct _UsbSenderInfo
 
   GHashTable *owned_devices; /* device id → UsbOwnedDevices */
 } UsbSenderInfo;
-
-static XdpDbusImplUsb *usb_impl;
-static XdpUsb *usb;
 
 static void usb_device_acquire_data_free (UsbDeviceAcquireData *acquire_data);
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (UsbDeviceAcquireData, usb_device_acquire_data_free)
@@ -278,7 +283,7 @@ usb_sender_info_from_call (XdpUsb  *self,
 }
 
 static UsbSenderInfo *
-usb_sender_info_from_request (XdpUsb  *self,
+usb_sender_info_from_request (XdpUsb     *self,
                               XdpRequest *request)
 {
   g_return_val_if_fail (request != NULL, NULL);
@@ -451,6 +456,9 @@ usb_sender_info_match_device (UsbSenderInfo *sender_info,
 static void
 xdp_usb_session_close (XdpSession *session)
 {
+  XdpUsbSession *usb_session = XDP_USB_SESSION (session);
+  XdpUsb *usb = usb_session->usb;
+
   g_debug ("USB session '%s' closed", session->id);
 
   g_assert (g_hash_table_contains (usb->sessions, session));
@@ -462,7 +470,10 @@ xdp_usb_session_dispose (GObject *object)
 {
   XdpUsbSession *usb_session = XDP_USB_SESSION (object);
 
+  g_clear_object (&usb_session->usb);
   g_clear_pointer (&usb_session->available_devices, g_hash_table_destroy);
+
+  G_OBJECT_CLASS (xdp_usb_session_parent_class)->dispose (object);
 }
 
 static void
@@ -483,12 +494,14 @@ xdp_usb_session_init (XdpUsbSession *session)
 }
 
 static XdpUsbSession *
-xdp_usb_session_new (GDBusConnection  *connection,
-                     XdpCall             *call,
+xdp_usb_session_new (XdpUsb           *usb,
+                     GDBusConnection  *connection,
+                     XdpCall          *call,
                      GVariant         *options,
                      GError          **error)
 {
   XdpSession *session = NULL;
+  XdpUsbSession *usb_session = NULL;
 
   session = g_initable_new (XDP_TYPE_USB_SESSION,
                             NULL, error,
@@ -500,9 +513,12 @@ xdp_usb_session_new (GDBusConnection  *connection,
   if (!session)
     return NULL;
 
+  usb_session = XDP_USB_SESSION (session);
+  usb_session->usb = g_object_ref (usb);
+
   g_debug ("[usb] USB session '%s' created", session->id);
 
-  return XDP_USB_SESSION (session);
+  return usb_session;
 }
 
 static GVariant *
@@ -642,8 +658,8 @@ handle_session_event (XdpUsb        *self,
 
   g_dbus_connection_emit_signal (session->connection,
                                  session->sender,
-                                 "/org/freedesktop/portal/desktop",
-                                 "org.freedesktop.portal.Usb",
+                                 DESKTOP_DBUS_PATH,
+                                 USB_DBUS_IFACE,
                                  "DeviceEvents",
                                  g_variant_new ("(o@a(ssa{sv}))",
                                                 session->id,
@@ -774,8 +790,8 @@ send_initial_device_list (XdpUsb        *self,
 
   g_dbus_connection_emit_signal (session->connection,
                                  session->sender,
-                                 "/org/freedesktop/portal/desktop",
-                                 "org.freedesktop.portal.Usb",
+                                 DESKTOP_DBUS_PATH,
+                                 USB_DBUS_IFACE,
                                  "DeviceEvents",
                                  events,
                                  NULL);
@@ -830,7 +846,7 @@ handle_create_session (XdpDbusUsb            *object,
   options = g_variant_ref_sink (g_variant_builder_end (&options_builder));
 
   connection = g_dbus_method_invocation_get_connection (invocation);
-  usb_session = xdp_usb_session_new (connection, call, options, &error);
+  usb_session = xdp_usb_session_new (self, connection, call, options, &error);
   if (!usb_session)
     {
       g_dbus_method_invocation_return_gerror (invocation, error);
@@ -946,6 +962,7 @@ usb_acquire_devices_cb (GObject      *source_object,
                         GAsyncResult *result,
                         gpointer      data)
 {
+  XdpUsb *usb;
   XdgDesktopPortalResponseEnum response;
   g_autoptr(UsbSenderInfo) sender_info = NULL;
   g_autoptr(GVariantIter) devices_iter = NULL;
@@ -959,13 +976,18 @@ usb_acquire_devices_cb (GObject      *source_object,
   REQUEST_AUTOLOCK (request);
 
   response = XDG_DESKTOP_PORTAL_RESPONSE_OTHER;
+  usb = g_object_get_data (G_OBJECT (request), "-xdp-request-usb");
   sender_info = usb_sender_info_from_request (usb, request);
 
   g_assert (sender_info != NULL);
 
   g_variant_builder_init (&results_builder, G_VARIANT_TYPE_VARDICT);
 
-  if (!xdp_dbus_impl_usb_call_acquire_devices_finish (usb_impl, &response, &results, result, &error))
+  if (!xdp_dbus_impl_usb_call_acquire_devices_finish (usb->impl,
+                                                      &response,
+                                                      &results,
+                                                      result,
+                                                      &error))
     {
       response = XDG_DESKTOP_PORTAL_RESPONSE_OTHER;
       g_dbus_error_strip_remote_error (error);
@@ -1186,12 +1208,14 @@ handle_acquire_devices (XdpDbusUsb            *object,
       return G_DBUS_METHOD_INVOCATION_HANDLED;
     }
 
-  impl_request = xdp_dbus_impl_request_proxy_new_sync (g_dbus_proxy_get_connection (G_DBUS_PROXY (usb_impl)),
-                                                       G_DBUS_PROXY_FLAGS_NONE,
-                                                       g_dbus_proxy_get_name (G_DBUS_PROXY (usb_impl)),
-                                                       request->id,
-                                                       NULL,
-                                                       &error);
+  impl_request = xdp_dbus_impl_request_proxy_new_sync (
+    g_dbus_proxy_get_connection (G_DBUS_PROXY (self->impl)),
+    G_DBUS_PROXY_FLAGS_NONE,
+    g_dbus_proxy_get_name (G_DBUS_PROXY (self->impl)),
+    request->id,
+    NULL,
+    &error);
+
   if (!impl_request)
     {
       g_dbus_method_invocation_return_gerror (invocation, error);
@@ -1223,7 +1247,11 @@ handle_acquire_devices (XdpDbusUsb            *object,
   xdp_request_set_impl_request (request, impl_request);
   xdp_request_export (request, g_dbus_method_invocation_get_connection (invocation));
 
-  xdp_dbus_impl_usb_call_acquire_devices (usb_impl,
+
+  g_object_set_data_full (G_OBJECT (request), "-xdp-request-usb",
+                          g_object_ref (self), g_object_unref);
+
+  xdp_dbus_impl_usb_call_acquire_devices (self->impl,
                                           request->id,
                                           arg_parent_window,
                                           xdp_app_info_get_id (request->app_info),
@@ -1498,8 +1526,6 @@ xdp_usb_init (XdpUsb *self)
 
   g_debug ("[usb] Initializing USB portal");
 
-  xdp_dbus_usb_set_version (XDP_DBUS_USB (self), 1);
-
   self->ids_to_devices = g_hash_table_new_full (g_str_hash, g_str_equal,
                                                 g_free, g_object_unref);
   self->syspaths_to_ids = g_hash_table_new_full (g_str_hash, g_str_equal,
@@ -1530,38 +1556,69 @@ xdp_usb_init (XdpUsb *self)
 }
 
 static void
-peer_died_cb (const char *sender)
+on_peer_died (XdpDesktopPortal *desktop_portal,
+              const char       *name,
+              gpointer          user_data)
 {
-  if (usb && g_hash_table_remove (usb->sender_infos, sender))
-    g_debug ("Removed sender %s", sender);
+  XdpUsb *usb = XDP_USB (user_data);
+
+  if (usb && g_hash_table_remove (usb->sender_infos, name))
+    g_debug ("Removed sender %s", name);
 }
 
-GDBusInterfaceSkeleton *
-xdp_usb_create (GDBusConnection *connection,
-                const char      *dbus_name)
+void
+xdp_usb_create (XdpDesktopPortal *desktop_portal)
 {
+  g_autoptr(XdpUsb) usb = NULL;
+  GDBusConnection *connection =
+    xdp_desktop_portal_get_connection (desktop_portal);
+  XdpPortalImpls *portal_impls = xdp_desktop_portal_get_impls (desktop_portal);
+  XdpPortalImplementation *impl;
   g_autoptr(GError) error = NULL;
 
-  usb_impl = xdp_dbus_impl_usb_proxy_new_sync (connection,
-                                               G_DBUS_PROXY_FLAGS_NONE,
-                                               dbus_name,
-                                               DESKTOP_PORTAL_OBJECT_PATH,
-                                               NULL,
-                                               &error);
-  if (usb_impl == NULL)
+  impl = xdp_portal_impls_find (portal_impls, USB_DBUS_IMPL_IFACE);
+  if (!impl)
     {
-      g_warning ("Failed to create USB proxy: %s", error->message);
-      return NULL;
+      g_debug ("Not providing USB portal: No backend configured");
+      return;
     }
 
-  xdp_connection_track_name_owners (connection, peer_died_cb);
-
-  g_dbus_proxy_set_default_timeout (G_DBUS_PROXY (usb_impl), G_MAXINT);
-
-  g_assert (usb_impl != NULL);
-  g_assert (usb == NULL);
-
   usb = g_object_new (xdp_usb_get_type (), NULL);
+  usb->impl =
+    xdp_dbus_impl_usb_proxy_new_sync (connection,
+                                      G_DBUS_PROXY_FLAGS_NONE,
+                                      impl->dbus_name,
+                                      DESKTOP_DBUS_PATH,
+                                      NULL,
+                                      &error);
 
-  return G_DBUS_INTERFACE_SKELETON (usb);
+  if (!usb->impl)
+    {
+      g_warning ("Not providing USB portal: No working backend");
+      return;
+    }
+
+  g_dbus_proxy_set_default_timeout (G_DBUS_PROXY (usb->impl), G_MAXINT);
+
+  xdp_dbus_usb_set_version (XDP_DBUS_USB (usb), 1);
+
+  g_signal_connect_object (desktop_portal, "peer-died",
+                           G_CALLBACK (on_peer_died),
+                           usb, G_CONNECT_DEFAULT);
+
+  if (xdp_desktop_portal_export (desktop_portal,
+                                 G_DBUS_INTERFACE_SKELETON (usb),
+                                 &error))
+    {
+      g_object_set_data_full (G_OBJECT (desktop_portal),
+                              "-portal-usb",
+                              g_steal_pointer (&usb),
+                              g_object_unref);
+
+      g_debug ("Providing USB portal");
+    }
+  else
+    {
+      g_warning ("Not providing USB portal: %s", error->message);
+    }
 }

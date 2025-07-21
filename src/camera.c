@@ -32,11 +32,10 @@
 #include "xdp-impl-dbus.h"
 #include "xdp-utils.h"
 
+#include "camera.h"
+
 #define PERMISSION_TABLE "devices"
 #define PERMISSION_DEVICE_CAMERA "camera"
-
-static XdpDbusImplLockdown *lockdown;
-static XdpDbusImplAccess *access_impl;
 
 typedef struct _Camera Camera;
 typedef struct _CameraClass CameraClass;
@@ -44,6 +43,9 @@ typedef struct _CameraClass CameraClass;
 struct _Camera
 {
   XdpDbusCameraSkeleton parent_instance;
+
+  XdpDbusImplLockdown *lockdown;
+  XdpDbusImplAccess *access_impl;
 
   PipeWireRemote *pipewire_remote;
   GSource *pipewire_source;
@@ -58,8 +60,6 @@ struct _CameraClass
   XdpDbusCameraSkeletonClass parent_class;
 };
 
-static Camera *camera;
-
 GType camera_get_type (void);
 static void camera_iface_init (XdpDbusCameraIface *iface);
 
@@ -67,12 +67,15 @@ G_DEFINE_TYPE_WITH_CODE (Camera, camera, XDP_DBUS_TYPE_CAMERA_SKELETON,
                          G_IMPLEMENT_INTERFACE (XDP_DBUS_TYPE_CAMERA,
                                                 camera_iface_init))
 
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (Camera, g_object_unref)
+
 static gboolean
 create_pipewire_remote (Camera *camera,
                         GError **error);
 
 static gboolean
-query_permission_sync (XdpRequest *request)
+query_permission_sync (Camera     *camera,
+                       XdpRequest *request)
 {
   XdpPermission permission;
   const char *app_id;
@@ -111,11 +114,13 @@ query_permission_sync (XdpRequest *request)
           body = g_strdup (_("An app wants to access camera devices."));
         }
 
-      impl_request = xdp_dbus_impl_request_proxy_new_sync (g_dbus_proxy_get_connection (G_DBUS_PROXY (access_impl)),
-                                                           G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES,
-                                                           g_dbus_proxy_get_name (G_DBUS_PROXY (access_impl)),
-                                                           request->id,
-                                                           NULL, &error);
+      impl_request = xdp_dbus_impl_request_proxy_new_sync (
+        g_dbus_proxy_get_connection (G_DBUS_PROXY (camera->access_impl)),
+        G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES,
+        g_dbus_proxy_get_name (G_DBUS_PROXY (camera->access_impl)),
+        request->id,
+        NULL, &error);
+
       if (!impl_request)
         return FALSE;
 
@@ -123,7 +128,7 @@ query_permission_sync (XdpRequest *request)
 
       g_debug ("Calling backend for device access to camera");
 
-      if (!xdp_dbus_impl_access_call_access_dialog_sync (access_impl,
+      if (!xdp_dbus_impl_access_call_access_dialog_sync (camera->access_impl,
                                                          request->id,
                                                          app_id,
                                                          "",
@@ -163,10 +168,11 @@ handle_access_camera_in_thread_func (GTask *task,
                                      gpointer task_data,
                                      GCancellable *cancellable)
 {
+  Camera *camera = (Camera *) source_object;
   XdpRequest *request = XDP_REQUEST (task_data);
   gboolean allowed;
 
-  allowed = query_permission_sync (request);
+  allowed = query_permission_sync (camera, request);
 
   REQUEST_AUTOLOCK (request);
 
@@ -201,11 +207,12 @@ handle_access_camera (XdpDbusCamera *object,
                       GDBusMethodInvocation *invocation,
                       GVariant *arg_options)
 {
+  Camera *camera = (Camera *) object;
   XdpRequest *request = xdp_request_from_invocation (invocation);
   const char *app_id;
   g_autoptr(GTask) task = NULL;
 
-  if (xdp_dbus_impl_lockdown_get_disable_camera (lockdown))
+  if (xdp_dbus_impl_lockdown_get_disable_camera (camera->lockdown))
     {
       g_debug ("Camera access disabled");
       g_dbus_method_invocation_return_error (invocation,
@@ -224,7 +231,7 @@ handle_access_camera (XdpDbusCamera *object,
 
   xdp_dbus_camera_complete_access_camera (object, invocation, request->id);
 
-  task = g_task_new (object, NULL, NULL, NULL);
+  task = g_task_new (camera, NULL, NULL, NULL);
   g_task_set_task_data (task, g_object_ref (request), g_object_unref);
   g_task_run_in_thread (task, handle_access_camera_in_thread_func);
 
@@ -272,6 +279,7 @@ handle_open_pipewire_remote (XdpDbusCamera *object,
                              GUnixFDList *in_fd_list,
                              GVariant *arg_options)
 {
+  Camera *camera = (Camera *) object;
   g_autoptr(XdpAppInfo) app_info = NULL;
   const char *app_id;
   XdpPermission permission;
@@ -281,7 +289,7 @@ handle_open_pipewire_remote (XdpDbusCamera *object,
   g_autoptr(GError) error = NULL;
   PipeWireRemote *remote;
 
-  if (xdp_dbus_impl_lockdown_get_disable_camera (lockdown))
+  if (xdp_dbus_impl_lockdown_get_disable_camera (camera->lockdown))
     {
       g_debug ("Camera access disabled");
       g_dbus_method_invocation_return_error (invocation,
@@ -512,6 +520,9 @@ camera_finalize (GObject *object)
 {
   Camera *camera = (Camera *)object;
 
+  g_clear_object (&camera->lockdown);
+  g_clear_object (&camera->access_impl);
+
   g_clear_pointer (&camera->pipewire_source, g_source_destroy);
   g_clear_pointer (&camera->pipewire_remote, pipewire_remote_destroy);
   g_clear_pointer (&camera->cameras, g_hash_table_unref);
@@ -538,30 +549,29 @@ camera_class_init (CameraClass *klass)
   object_class->finalize = camera_finalize;
 }
 
-GDBusInterfaceSkeleton *
-camera_create (GDBusConnection *connection,
-               const char      *access_impl_dbus_name,
-               gpointer         lockdown_proxy)
+void
+camera_create (XdpDesktopPortal *desktop_portal)
 {
+  g_autoptr(Camera) camera = NULL;
   g_autoptr(GError) error = NULL;
 
-  lockdown = lockdown_proxy;
-
   camera = g_object_new (camera_get_type (), NULL);
+  camera->lockdown = xdp_desktop_portal_get_lockdown_proxy (desktop_portal);
+  camera->access_impl = xdp_desktop_portal_get_access_proxy (desktop_portal);
 
-  access_impl = xdp_dbus_impl_access_proxy_new_sync (connection,
-                                                     G_DBUS_PROXY_FLAGS_NONE,
-                                                     access_impl_dbus_name,
-                                                     DESKTOP_PORTAL_OBJECT_PATH,
-                                                     NULL,
-                                                     &error);
-  if (access_impl == NULL)
+  if (xdp_desktop_portal_export (desktop_portal,
+                                 G_DBUS_INTERFACE_SKELETON (camera),
+                                 &error))
     {
-      g_warning ("Failed to create access proxy: %s", error->message);
-      return NULL;
+      g_object_set_data_full (G_OBJECT (desktop_portal),
+                              "-portal-camera",
+                              g_steal_pointer (&camera),
+                              g_object_unref);
+
+      g_debug ("Providing Camera portal");
     }
-
-  g_dbus_proxy_set_default_timeout (G_DBUS_PROXY (access_impl), G_MAXINT);
-
-  return G_DBUS_INTERFACE_SKELETON (camera);
+  else
+    {
+      g_warning ("Not providing Camera portal: %s", error->message);
+    }
 }

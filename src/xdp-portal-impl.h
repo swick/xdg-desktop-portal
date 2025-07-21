@@ -25,6 +25,8 @@
 
 #include <glib.h>
 
+#include "xdp-desktop-portal.h"
+
 typedef struct {
   char *source;
   char *dbus_name;
@@ -38,8 +40,6 @@ G_DECLARE_FINAL_TYPE (XdpPortalImpls,
                       xdp_portal_impls,
                       XDP, PORTAL_IMPLS,
                       GObject)
-
-typedef struct _XdpDesktopPortal XdpDesktopPortal;
 
 XdpPortalImpls * xdp_portal_impls_new (XdpDesktopPortal *desktop_portal);
 

@@ -23,20 +23,28 @@
 #include "config.h"
 
 #include <string.h>
-
 #include <glib/gi18n.h>
-
 #include <gio/gio.h>
 #include <gio/gdesktopappinfo.h>
+#include <geoclue.h>
 
-#include "location.h"
+#include "geoclue-dbus.h"
+
 #include "xdp-request.h"
 #include "xdp-permissions.h"
 #include "xdp-dbus.h"
 #include "xdp-utils.h"
 #include "xdp-session.h"
-#include "geoclue-dbus.h"
-#include <geoclue.h>
+#include "xdp-portal-impl.h"
+
+#include "location.h"
+
+#define LOCATION_DBUS_IFACE DESKTOP_DBUS_IFACE ".Location"
+
+#define GEO_CLUE2_BUS_NAME "org.freedesktop.GeoClue2"
+#define GEO_CLUE2_MANAGER_OBJECT_PATH "/org/freedesktop/GeoClue2/Manager"
+#define GEO_CLUE2_MANAGER_IFACE "org.freedesktop.GeoClue2.Manager"
+#define GEO_CLUE2_LOCATION_IFACE "org.freedesktop.GeoClue2.Location"
 
 static GClueAccuracyLevel gclue_accuracy_level_from_string (const char *str);
 static const char *       gclue_accuracy_level_to_string   (GClueAccuracyLevel level);
@@ -168,11 +176,11 @@ location_updated (GeoclueClient *client,
     return;
 
   ret = g_dbus_connection_call_sync (g_dbus_proxy_get_connection (G_DBUS_PROXY (client)),
-                                     "org.freedesktop.GeoClue2",
+                                     GEO_CLUE2_BUS_NAME,
                                      new_location,
-                                     "org.freedesktop.DBus.Properties",
+                                     DBUS_DBUS_IFACE ".Properties",
                                      "GetAll",
-                                     g_variant_new ("(s)", "org.freedesktop.GeoClue2.Location"),
+                                     g_variant_new ("(s)", GEO_CLUE2_LOCATION_IFACE),
                                      G_VARIANT_TYPE ("(a{sv})"),
                                      0, -1, NULL, &error);
   if (ret == NULL)
@@ -185,8 +193,8 @@ location_updated (GeoclueClient *client,
 
   if (!g_dbus_connection_emit_signal (session->connection,
                                       session->sender,
-                                      "/org/freedesktop/portal/desktop",
-                                      "org.freedesktop.portal.Location",
+                                      DESKTOP_DBUS_PATH,
+                                      LOCATION_DBUS_IFACE,
                                       "LocationUpdated",
                                       g_variant_new ("(o@a{sv})", session->id, dict),
                                       &error))
@@ -207,9 +215,9 @@ location_session_start (LocationSession *loc_session)
 
   system_bus = g_bus_get_sync (G_BUS_TYPE_SYSTEM, NULL, NULL);
   ret = g_dbus_connection_call_sync (system_bus,
-                                     "org.freedesktop.GeoClue2",
-                                     "/org/freedesktop/GeoClue2/Manager",
-                                     "org.freedesktop.GeoClue2.Manager",
+                                     GEO_CLUE2_BUS_NAME,
+                                     GEO_CLUE2_MANAGER_OBJECT_PATH,
+                                     GEO_CLUE2_MANAGER_IFACE,
                                      "GetClient",
                                      NULL,
                                      G_VARIANT_TYPE ("(o)"),
@@ -225,7 +233,7 @@ location_session_start (LocationSession *loc_session)
 
   loc_session->client = geoclue_client_proxy_new_sync (system_bus,
                                                        G_DBUS_PROXY_FLAGS_NONE,
-                                                       "org.freedesktop.GeoClue2",
+                                                       GEO_CLUE2_BUS_NAME,
                                                        client_id,
                                                        NULL,
                                                        &error);
@@ -391,6 +399,9 @@ set_location_permissions (const char *app_id,
 typedef struct
 {
   XdpDbusLocationSkeleton parent_instance;
+
+  XdpDbusImplAccess *access_impl;
+  XdpDbusImplLockdown *lockdown;
 } Location;
 
 typedef struct 
@@ -398,15 +409,13 @@ typedef struct
   XdpDbusLocationSkeletonClass parent_class;
 } LocationClass;
 
-static Location *location;
-static XdpDbusImplAccess *access_impl;
-static XdpDbusImplLockdown *lockdown;
-
 GType location_get_type (void) G_GNUC_CONST;
 static void location_iface_init (XdpDbusLocationIface *iface);
 
 G_DEFINE_TYPE_WITH_CODE (Location, location, XDP_DBUS_TYPE_LOCATION_SKELETON,
                          G_IMPLEMENT_INTERFACE (XDP_DBUS_TYPE_LOCATION, location_iface_init))
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (Location, g_object_unref)
 
 /*** CreateSession ***/
 
@@ -415,13 +424,14 @@ handle_create_session (XdpDbusLocation *object,
                        GDBusMethodInvocation *invocation,
                        GVariant *arg_options)
 {
+  Location *location = (Location *) object;
   g_autoptr(GError) error = NULL;
   LocationSession *loc_session;
   XdpSession *session;
   guint threshold;
   guint accuracy;
 
-  if (xdp_dbus_impl_lockdown_get_disable_location (lockdown))
+  if (xdp_dbus_impl_lockdown_get_disable_location (location->lockdown))
     {
       g_debug ("Location services disabled");
       g_dbus_method_invocation_return_error (invocation,
@@ -492,6 +502,7 @@ handle_start_in_thread_func (GTask *task,
                              gpointer task_data,
                              GCancellable *cancellable)
 {
+  Location *location = (Location *) source_object;
   XdpRequest *request = XDP_REQUEST (task_data);
   const char *parent_window;
   const char *id;
@@ -525,11 +536,12 @@ handle_start_in_thread_func (GTask *task,
       g_autofree char *subtitle = NULL;
       const char *body;
 
-      impl_request = xdp_dbus_impl_request_proxy_new_sync (g_dbus_proxy_get_connection (G_DBUS_PROXY (access_impl)),
-                                                           G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES,
-                                                           g_dbus_proxy_get_name (G_DBUS_PROXY (access_impl)),
-                                                           request->id,
-                                                           NULL, NULL);
+      impl_request = xdp_dbus_impl_request_proxy_new_sync (
+        g_dbus_proxy_get_connection (G_DBUS_PROXY (location->access_impl)),
+        G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES,
+        g_dbus_proxy_get_name (G_DBUS_PROXY (location->access_impl)),
+        request->id,
+        NULL, NULL);
 
       xdp_request_set_impl_request (request, impl_request);
 
@@ -576,7 +588,7 @@ handle_start_in_thread_func (GTask *task,
 
       body = _("Location access can be changed at any time from the privacy settings.");
 
-      if (!xdp_dbus_impl_access_call_access_dialog_sync (access_impl,
+      if (!xdp_dbus_impl_access_call_access_dialog_sync (location->access_impl,
                                                          request->id,
                                                          app_id,
                                                          parent_window,
@@ -649,12 +661,13 @@ handle_start (XdpDbusLocation *object,
               const char *arg_parent_window,
               GVariant *arg_options)
 {
+  Location *location = (Location *) object;
   XdpRequest *request = xdp_request_from_invocation (invocation);
   XdpSession *session;
   LocationSession *loc_session;
   g_autoptr(GTask) task = NULL;
 
-  if (xdp_dbus_impl_lockdown_get_disable_location (lockdown))
+  if (xdp_dbus_impl_lockdown_get_disable_location (location->lockdown))
     {
       g_debug ("Location services disabled");
       g_dbus_method_invocation_return_error (invocation,
@@ -711,7 +724,7 @@ handle_start (XdpDbusLocation *object,
 
   xdp_dbus_location_complete_start (object, invocation, request->id);
 
-  task = g_task_new (object, NULL, NULL, NULL);
+  task = g_task_new (location, NULL, NULL, NULL);
   g_task_set_task_data (task, g_object_ref (request), g_object_unref);
   g_task_run_in_thread (task, handle_start_in_thread_func);
 
@@ -739,27 +752,29 @@ location_class_init (LocationClass *klass)
   quark_request_session = g_quark_from_static_string ("-xdp-request-location-session");
 }
 
-GDBusInterfaceSkeleton *
-location_create (GDBusConnection *connection,
-                 const char *dbus_name,
-                 gpointer lockdown_proxy)
+void
+location_create (XdpDesktopPortal *desktop_portal)
 {
+  g_autoptr(Location) location = NULL;
   g_autoptr(GError) error = NULL;
 
-  lockdown = lockdown_proxy;
-
-  access_impl = xdp_dbus_impl_access_proxy_new_sync (connection,
-                                                     G_DBUS_PROXY_FLAGS_NONE,
-                                                     dbus_name,
-                                                     DESKTOP_PORTAL_OBJECT_PATH,
-                                                     NULL, &error);
-  if (access_impl == NULL)
-    {
-      g_warning ("Failed to create access proxy: %s", error->message);
-      return NULL;
-    }
-
   location = g_object_new (location_get_type (), NULL);
+  location->lockdown = xdp_desktop_portal_get_lockdown_proxy (desktop_portal);
+  location->access_impl = xdp_desktop_portal_get_access_proxy (desktop_portal);
 
-  return G_DBUS_INTERFACE_SKELETON (location);
+  if (xdp_desktop_portal_export (desktop_portal,
+                                 G_DBUS_INTERFACE_SKELETON (location),
+                                 &error))
+    {
+      g_object_set_data_full (G_OBJECT (desktop_portal),
+                              "-portal-location",
+                              g_steal_pointer (&location),
+                              g_object_unref);
+
+      g_debug ("Providing Location portal");
+    }
+  else
+    {
+      g_warning ("Not providing Location portal: %s", error->message);
+    }
 }

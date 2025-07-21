@@ -44,8 +44,6 @@ struct _RegistryClass
   XdpDbusHostRegistrySkeletonClass parent_class;
 };
 
-static Registry *registry;
-
 GType registry_get_type (void) G_GNUC_CONST;
 static void registry_iface_init (XdpDbusHostRegistryIface *iface);
 
@@ -53,6 +51,8 @@ G_DEFINE_TYPE_WITH_CODE (Registry, registry,
                          XDP_DBUS_HOST_TYPE_REGISTRY_SKELETON,
                          G_IMPLEMENT_INTERFACE (XDP_DBUS_HOST_TYPE_REGISTRY,
                                                 registry_iface_init));
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (Registry, g_object_unref)
 
 static gboolean
 handle_register (XdpDbusHostRegistry   *object,
@@ -106,10 +106,28 @@ registry_class_init (RegistryClass *klass)
 {
 }
 
-GDBusInterfaceSkeleton *
-registry_create (GDBusConnection *connection)
+void
+registry_create (XdpDesktopPortal *desktop_portal)
 {
+  g_autoptr(Registry) registry = NULL;
+  g_autoptr(GError) error = NULL;
+
   registry = g_object_new (registry_get_type (), NULL);
 
-  return G_DBUS_INTERFACE_SKELETON (registry);
+  /* IMPORTANT: this is exported on the host! */
+  if (xdp_desktop_portal_export_host (desktop_portal,
+                                      G_DBUS_INTERFACE_SKELETON (registry),
+                                      &error))
+    {
+      g_object_set_data_full (G_OBJECT (desktop_portal),
+                              "-portal-registry",
+                              g_steal_pointer (&registry),
+                              g_object_unref);
+
+      g_debug ("Providing Registry portal");
+    }
+  else
+    {
+      g_warning ("Not providing Registry portal: %s", error->message);
+    }
 }

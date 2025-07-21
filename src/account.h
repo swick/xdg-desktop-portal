@@ -24,5 +24,6 @@
 
 #include <gio/gio.h>
 
-GDBusInterfaceSkeleton * account_create (GDBusConnection *connection,
-                                         const char      *dbus_name);
+#include "xdp-desktop-portal.h"
+
+void account_create (XdpDesktopPortal *desktop_portal);

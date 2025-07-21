@@ -26,20 +26,22 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
-
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-
 #include <gio/gio.h>
 #include <gio/gunixfdlist.h>
 
-#include "email.h"
 #include "xdp-request.h"
 #include "xdp-documents.h"
 #include "xdp-dbus.h"
 #include "xdp-impl-dbus.h"
 #include "xdp-utils.h"
+#include "xdp-portal-impl.h"
+
+#include "email.h"
+
+#define EMAIL_DBUS_IMPL_IFACE DESKTOP_DBUS_IMPL_IFACE ".Email"
 
 typedef struct _Email Email;
 typedef struct _EmailClass EmailClass;
@@ -47,6 +49,8 @@ typedef struct _EmailClass EmailClass;
 struct _Email
 {
   XdpDbusEmailSkeleton parent_instance;
+
+  XdpDbusImplEmail *impl;
 };
 
 struct _EmailClass
@@ -54,15 +58,14 @@ struct _EmailClass
   XdpDbusEmailSkeletonClass parent_class;
 };
 
-static XdpDbusImplEmail *impl;
-static Email *email;
-
 GType email_get_type (void) G_GNUC_CONST;
 static void email_iface_init (XdpDbusEmailIface *iface);
 
 G_DEFINE_TYPE_WITH_CODE (Email, email, XDP_DBUS_TYPE_EMAIL_SKELETON,
                          G_IMPLEMENT_INTERFACE (XDP_DBUS_TYPE_EMAIL,
                                                 email_iface_init));
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (Email, g_object_unref)
 
 static void
 send_response_in_thread_func (GTask        *task,
@@ -209,6 +212,7 @@ handle_compose_email (XdpDbusEmail *object,
                       const gchar *arg_parent_window,
                       GVariant *arg_options)
 {
+  Email *email = (Email *) object;
   XdpRequest *request = xdp_request_from_invocation (invocation);
   const char *app_id = xdp_app_info_get_id (request->app_info);
   g_autoptr(GError) error = NULL;
@@ -221,11 +225,13 @@ handle_compose_email (XdpDbusEmail *object,
 
   REQUEST_AUTOLOCK (request);
 
-  impl_request = xdp_dbus_impl_request_proxy_new_sync (g_dbus_proxy_get_connection (G_DBUS_PROXY (impl)),
-                                                       G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES,
-                                                       g_dbus_proxy_get_name (G_DBUS_PROXY (impl)),
-                                                       request->id,
-                                                       NULL, &error);
+  impl_request = xdp_dbus_impl_request_proxy_new_sync (
+    g_dbus_proxy_get_connection (G_DBUS_PROXY (email->impl)),
+    G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES,
+    g_dbus_proxy_get_name (G_DBUS_PROXY (email->impl)),
+    request->id,
+    NULL, &error);
+
   if (!impl_request)
     {
       g_dbus_method_invocation_return_gerror (invocation, error);
@@ -296,7 +302,7 @@ handle_compose_email (XdpDbusEmail *object,
 
   xdp_dbus_email_complete_compose_email (object, invocation, NULL, request->id);
 
-  xdp_dbus_impl_email_call_compose_email (impl,
+  xdp_dbus_impl_email_call_compose_email (email->impl,
                                           request->id,
                                           app_id,
                                           arg_parent_window,
@@ -317,7 +323,6 @@ email_iface_init (XdpDbusEmailIface *iface)
 static void
 email_init (Email *email)
 {
-  xdp_dbus_email_set_version (XDP_DBUS_EMAIL (email), 4);
 }
 
 static void
@@ -325,28 +330,55 @@ email_class_init (EmailClass *klass)
 {
 }
 
-GDBusInterfaceSkeleton *
-email_create (GDBusConnection *connection,
-              const char      *dbus_name)
+void
+email_create (XdpDesktopPortal *desktop_portal)
 {
+  g_autoptr(Email) email = NULL;
+  GDBusConnection *connection =
+    xdp_desktop_portal_get_connection (desktop_portal);
+  XdpPortalImpls *portal_impls = xdp_desktop_portal_get_impls (desktop_portal);
+  XdpPortalImplementation *impl;
   g_autoptr(GError) error = NULL;
 
-  impl = xdp_dbus_impl_email_proxy_new_sync (connection,
-                                             G_DBUS_PROXY_FLAGS_NONE,
-                                             dbus_name,
-                                             DESKTOP_PORTAL_OBJECT_PATH,
-                                             NULL,
-                                             &error);
-
-  if (impl == NULL)
+  impl = xdp_portal_impls_find (portal_impls, EMAIL_DBUS_IMPL_IFACE);
+  if (!impl)
     {
-      g_warning ("Failed to create email proxy: %s", error->message);
-      return NULL;
+      g_debug ("Not providing Email portal: No backend configured");
+      return;
     }
 
-  g_dbus_proxy_set_default_timeout (G_DBUS_PROXY (impl), G_MAXINT);
-
   email = g_object_new (email_get_type (), NULL);
+  email->impl =
+    xdp_dbus_impl_email_proxy_new_sync (connection,
+                                        G_DBUS_PROXY_FLAGS_NONE,
+                                        impl->dbus_name,
+                                        DESKTOP_DBUS_PATH,
+                                        NULL,
+                                        &error);
 
-  return G_DBUS_INTERFACE_SKELETON (email);
+  if (!email->impl)
+    {
+      g_warning ("Not providing Email portal: No working backend");
+      return;
+    }
+
+  g_dbus_proxy_set_default_timeout (G_DBUS_PROXY (email->impl), G_MAXINT);
+
+  xdp_dbus_email_set_version (XDP_DBUS_EMAIL (email), 4);
+
+  if (xdp_desktop_portal_export (desktop_portal,
+                                 G_DBUS_INTERFACE_SKELETON (email),
+                                 &error))
+    {
+      g_object_set_data_full (G_OBJECT (desktop_portal),
+                              "-portal-email",
+                              g_steal_pointer (&email),
+                              g_object_unref);
+
+      g_debug ("Providing Email portal");
+    }
+  else
+    {
+      g_warning ("Not providing Email portal: %s", error->message);
+    }
 }

@@ -22,6 +22,6 @@
 
 #include <gio/gio.h>
 
-GDBusInterfaceSkeleton * camera_create (GDBusConnection *connection,
-                                        const char      *access_impl_dbus_name,
-                                        gpointer         lockdown_proxy);
+#include "xdp-desktop-portal.h"
+
+void camera_create (XdpDesktopPortal *desktop_portal);

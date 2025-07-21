@@ -24,6 +24,6 @@
 
 #include <gio/gio.h>
 
-GDBusInterfaceSkeleton *
-global_shortcuts_create (GDBusConnection *connection,
-                         const char *dbus_name);
+#include "xdp-desktop-portal.h"
+
+void global_shortcuts_create (XdpDesktopPortal *desktop_portal);

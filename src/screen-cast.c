@@ -25,7 +25,6 @@
 #include <gio/gunixfdlist.h>
 
 #include "xdp-session.h"
-#include "screen-cast.h"
 #include "remote-desktop.h"
 #include "xdp-request.h"
 #include "xdp-permissions.h"
@@ -34,6 +33,11 @@
 #include "xdp-impl-dbus.h"
 #include "xdp-session-persistence.h"
 #include "xdp-utils.h"
+#include "xdp-portal-impl.h"
+
+#include "screen-cast.h"
+
+#define SCREEN_CAST_DBUS_IMPL_IFACE DESKTOP_DBUS_IMPL_IFACE ".ScreenCast"
 
 #define PERMISSION_ITEM(item_id, item_permissions) \
   ((struct pw_permission) { \
@@ -48,18 +52,14 @@ typedef struct _ScreenCastClass ScreenCastClass;
 struct _ScreenCast
 {
   XdpDbusScreenCastSkeleton parent_instance;
+
+  XdpDbusImplScreenCast *impl;
 };
 
 struct _ScreenCastClass
 {
   XdpDbusScreenCastSkeletonClass parent_class;
 };
-
-static XdpDbusImplScreenCast *impl;
-static int impl_version;
-static ScreenCast *screen_cast;
-
-static unsigned int available_cursor_modes = 0;
 
 GType screen_cast_get_type (void);
 static void screen_cast_iface_init (XdpDbusScreenCastIface *iface);
@@ -77,6 +77,8 @@ G_DEFINE_TYPE_WITH_CODE (ScreenCast, screen_cast,
                          XDP_DBUS_TYPE_SCREEN_CAST_SKELETON,
                          G_IMPLEMENT_INTERFACE (XDP_DBUS_TYPE_SCREEN_CAST,
                                                 screen_cast_iface_init))
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (ScreenCast, g_object_unref)
 
 typedef enum _ScreenCastSessionState
 {
@@ -121,10 +123,59 @@ IS_SCREEN_CAST_SESSION (gpointer ptr)
   return G_TYPE_CHECK_INSTANCE_TYPE (ptr, screen_cast_session_get_type ());
 }
 
+static void
+screen_cast_session_close (XdpSession *session)
+{
+  ScreenCastSession *screen_cast_session = SCREEN_CAST_SESSION (session);
+
+  screen_cast_session->state = SCREEN_CAST_SESSION_STATE_CLOSED;
+
+  xdp_session_persistence_generate_and_save_restore_token (session,
+                                                           SCREEN_CAST_TABLE,
+                                                           screen_cast_session->persist_mode,
+                                                           &screen_cast_session->restore_token,
+                                                           &screen_cast_session->restore_data);
+
+  g_debug ("screen cast session owned by '%s' closed", session->sender);
+}
+
+static void
+screen_cast_session_finalize (GObject *object)
+{
+  ScreenCastSession *screen_cast_session = SCREEN_CAST_SESSION (object);
+
+  g_clear_pointer (&screen_cast_session->restore_token, g_free);
+  g_clear_pointer (&screen_cast_session->restore_data, g_variant_unref);
+
+  g_list_free_full (screen_cast_session->streams,
+                    (GDestroyNotify)screen_cast_stream_free);
+
+  G_OBJECT_CLASS (screen_cast_session_parent_class)->finalize (object);
+}
+
+static void
+screen_cast_session_init (ScreenCastSession *screen_cast_session)
+{
+}
+
+static void
+screen_cast_session_class_init (ScreenCastSessionClass *klass)
+{
+  GObjectClass *object_class;
+  XdpSessionClass *session_class;
+
+  object_class = G_OBJECT_CLASS (klass);
+  object_class->finalize = screen_cast_session_finalize;
+
+  session_class = (XdpSessionClass *)klass;
+  session_class->close = screen_cast_session_close;
+}
+
 static ScreenCastSession *
-screen_cast_session_new (GVariant *options,
-                         XdpRequest *request,
-                         GError **error)
+screen_cast_session_new (ScreenCast  *screen_cast,
+                         GVariant    *options,
+                         XdpRequest  *request,
+                         GError     **error)
 {
   XdpSession *session;
   GDBusInterfaceSkeleton *interface_skeleton =
@@ -133,8 +184,9 @@ screen_cast_session_new (GVariant *options,
   GDBusConnection *connection =
     g_dbus_interface_skeleton_get_connection (interface_skeleton);
   GDBusConnection *impl_connection =
-    g_dbus_proxy_get_connection (G_DBUS_PROXY (impl));
-  const char *impl_dbus_name = g_dbus_proxy_get_name (G_DBUS_PROXY (impl));
+    g_dbus_proxy_get_connection (G_DBUS_PROXY (screen_cast->impl));
+  const char *impl_dbus_name =
+    g_dbus_proxy_get_name (G_DBUS_PROXY (screen_cast->impl));
 
   session_token = lookup_session_token (options);
   session = g_initable_new (screen_cast_session_get_type (), NULL, error,
@@ -157,6 +209,7 @@ create_session_done (GObject *source_object,
                      GAsyncResult *res,
                      gpointer data)
 {
+  XdpDbusImplScreenCast *impl = (XdpDbusImplScreenCast *) source_object;
   g_autoptr(XdpRequest) request = data;
   XdpSession *session;
   guint response = 2;
@@ -222,6 +275,7 @@ handle_create_session (XdpDbusScreenCast *object,
                        GDBusMethodInvocation *invocation,
                        GVariant *arg_options)
 {
+  ScreenCast *screen_cast = (ScreenCast *) object;
   XdpRequest *request = xdp_request_from_invocation (invocation);
   g_autoptr(GError) error = NULL;
   g_autoptr(XdpDbusImplRequest) impl_request = NULL;
@@ -232,12 +286,13 @@ handle_create_session (XdpDbusScreenCast *object,
 
   REQUEST_AUTOLOCK (request);
 
-  impl_request =
-    xdp_dbus_impl_request_proxy_new_sync (g_dbus_proxy_get_connection (G_DBUS_PROXY (impl)),
-                                          G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES,
-                                          g_dbus_proxy_get_name (G_DBUS_PROXY (impl)),
-                                          request->id,
-                                          NULL, &error);
+  impl_request = xdp_dbus_impl_request_proxy_new_sync (
+    g_dbus_proxy_get_connection (G_DBUS_PROXY (screen_cast->impl)),
+    G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES,
+    g_dbus_proxy_get_name (G_DBUS_PROXY (screen_cast->impl)),
+    request->id,
+    NULL, &error);
+
   if (!impl_request)
     {
       g_dbus_method_invocation_return_gerror (invocation, error);
@@ -247,7 +302,10 @@ handle_create_session (XdpDbusScreenCast *object,
   xdp_request_set_impl_request (request, impl_request);
   xdp_request_export (request, g_dbus_method_invocation_get_connection (invocation));
 
-  session = XDP_SESSION (screen_cast_session_new (arg_options, request, &error));
+  session = XDP_SESSION (screen_cast_session_new (screen_cast,
+                                                  arg_options,
+                                                  request,
+                                                  &error));
   if (!session)
     {
       g_dbus_method_invocation_return_gerror (invocation, error);
@@ -261,7 +319,7 @@ handle_create_session (XdpDbusScreenCast *object,
                            g_object_ref (session),
                            g_object_unref);
 
-  xdp_dbus_impl_screen_cast_call_create_session (impl,
+  xdp_dbus_impl_screen_cast_call_create_session (screen_cast->impl,
                                                  request->id,
                                                  session->id,
                                                  xdp_app_info_get_id (request->app_info),
@@ -280,6 +338,7 @@ select_sources_done (GObject *source_object,
                      GAsyncResult *res,
                      gpointer data)
 {
+  XdpDbusImplScreenCast *impl = (XdpDbusImplScreenCast *) source_object;
   g_autoptr(XdpRequest) request = data;
   XdpSession *session;
   guint response = 2;
@@ -361,6 +420,9 @@ validate_source_types (const char *key,
 
   return TRUE;
 }
+
+/* FIXME: remove global when we can pass in pointers to validate */
+static unsigned int available_cursor_modes = 0;
 
 static gboolean
 validate_cursor_mode (const char *key,
@@ -481,6 +543,7 @@ handle_select_sources (XdpDbusScreenCast *object,
                        const char *arg_session_handle,
                        GVariant *arg_options)
 {
+  ScreenCast *screen_cast = (ScreenCast *) object;
   XdpRequest *request = xdp_request_from_invocation (invocation);
   XdpSession *session;
   g_autoptr(GError) error = NULL;
@@ -556,12 +619,13 @@ handle_select_sources (XdpDbusScreenCast *object,
       return G_DBUS_METHOD_INVOCATION_HANDLED;
     }
 
-  impl_request =
-    xdp_dbus_impl_request_proxy_new_sync (g_dbus_proxy_get_connection (G_DBUS_PROXY (impl)),
-                                          G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES,
-                                          g_dbus_proxy_get_name (G_DBUS_PROXY (impl)),
-                                          request->id,
-                                          NULL, &error);
+  impl_request = xdp_dbus_impl_request_proxy_new_sync (
+    g_dbus_proxy_get_connection (G_DBUS_PROXY (screen_cast->impl)),
+    G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES,
+    g_dbus_proxy_get_name (G_DBUS_PROXY (screen_cast->impl)),
+    request->id,
+    NULL, &error);
+
   if (!impl_request)
     {
       g_dbus_method_invocation_return_gerror (invocation, error);
@@ -602,7 +666,7 @@ handle_select_sources (XdpDbusScreenCast *object,
         SCREEN_CAST_SESSION_STATE_SELECTING_SOURCES;
     }
 
-  xdp_dbus_impl_screen_cast_call_select_sources (impl,
+  xdp_dbus_impl_screen_cast_call_select_sources (screen_cast->impl,
                                                  request->id,
                                                  arg_session_handle,
                                                  xdp_app_info_get_id (request->app_info),
@@ -766,6 +830,7 @@ start_done (GObject *source_object,
             GAsyncResult *res,
             gpointer data)
 {
+  XdpDbusImplScreenCast *impl = (XdpDbusImplScreenCast *) source_object;
   g_autoptr(XdpRequest) request = data;
   XdpSession *session;
   ScreenCastSession *screen_cast_session;
@@ -841,6 +906,7 @@ handle_start (XdpDbusScreenCast *object,
               const char *arg_parent_window,
               GVariant *arg_options)
 {
+  ScreenCast *screen_cast = (ScreenCast *) object;
   XdpRequest *request = xdp_request_from_invocation (invocation);
   XdpSession *session;
   ScreenCastSession *screen_cast_session;
@@ -894,12 +960,13 @@ handle_start (XdpDbusScreenCast *object,
   g_object_set_data_full (G_OBJECT (request),
                           "window", g_strdup (arg_parent_window), g_free);
 
-  impl_request =
-    xdp_dbus_impl_request_proxy_new_sync (g_dbus_proxy_get_connection (G_DBUS_PROXY (impl)),
-                                          G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES,
-                                          g_dbus_proxy_get_name (G_DBUS_PROXY (impl)),
-                                          request->id,
-                                          NULL, &error);
+  impl_request = xdp_dbus_impl_request_proxy_new_sync (
+    g_dbus_proxy_get_connection (G_DBUS_PROXY (screen_cast->impl)),
+    G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES,
+    g_dbus_proxy_get_name (G_DBUS_PROXY (screen_cast->impl)),
+    request->id,
+    NULL, &error);
+
   if (!impl_request)
     {
       g_dbus_method_invocation_return_gerror (invocation, error);
@@ -917,7 +984,7 @@ handle_start (XdpDbusScreenCast *object,
                            g_object_unref);
   screen_cast_session->state = SCREEN_CAST_SESSION_STATE_STARTING;
 
-  xdp_dbus_impl_screen_cast_call_start (impl,
+  xdp_dbus_impl_screen_cast_call_start (screen_cast->impl,
                                         request->id,
                                         arg_session_handle,
                                         xdp_app_info_get_id (request->app_info),
@@ -1033,56 +1100,8 @@ screen_cast_iface_init (XdpDbusScreenCastIface *iface)
 }
 
 static void
-sync_supported_source_types (ScreenCast *screen_cast)
-{
-  unsigned int available_source_types;
-
-  available_source_types = xdp_dbus_impl_screen_cast_get_available_source_types (impl);
-  xdp_dbus_screen_cast_set_available_source_types (XDP_DBUS_SCREEN_CAST (screen_cast),
-                                                   available_source_types);
-}
-
-static void
-on_supported_source_types_changed (GObject *gobject,
-                                   GParamSpec *pspec,
-                                   ScreenCast *screen_cast)
-{
-  sync_supported_source_types (screen_cast);
-}
-
-static void
-sync_supported_cursor_modes (ScreenCast *screen_cast)
-{
-
-  available_cursor_modes = xdp_dbus_impl_screen_cast_get_available_cursor_modes (impl);
-  xdp_dbus_screen_cast_set_available_cursor_modes (XDP_DBUS_SCREEN_CAST (screen_cast),
-                                                   available_cursor_modes);
-}
-
-static void
-on_supported_cursor_modes_changed (GObject *gobject,
-                                   GParamSpec *pspec,
-                                   ScreenCast *screen_cast)
-{
-  sync_supported_cursor_modes (screen_cast);
-}
-
-static void
 screen_cast_init (ScreenCast *screen_cast)
 {
-  xdp_dbus_screen_cast_set_version (XDP_DBUS_SCREEN_CAST (screen_cast), 5);
-
-  g_signal_connect (impl, "notify::supported-source-types",
-                    G_CALLBACK (on_supported_source_types_changed),
-                    screen_cast);
-  if (impl_version >= 2)
-    {
-      g_signal_connect (impl, "notify::supported-cursor-modes",
-                        G_CALLBACK (on_supported_cursor_modes_changed),
-                        screen_cast);
-    }
-  sync_supported_source_types (screen_cast);
-  sync_supported_cursor_modes (screen_cast);
 }
 
 static void
@@ -1092,77 +1111,66 @@ screen_cast_class_init (ScreenCastClass *klass)
     g_quark_from_static_string ("-xdp-request-screen-cast-session");
 }
 
-GDBusInterfaceSkeleton *
-screen_cast_create (GDBusConnection *connection,
-                    const char *dbus_name)
+void
+screen_cast_create (XdpDesktopPortal *desktop_portal)
 {
+  g_autoptr(ScreenCast) screen_cast = NULL;
+  GDBusConnection *connection =
+    xdp_desktop_portal_get_connection (desktop_portal);
+  XdpPortalImpls *portal_impls = xdp_desktop_portal_get_impls (desktop_portal);
+  XdpPortalImplementation *impl;
   g_autoptr(GError) error = NULL;
 
-  impl = xdp_dbus_impl_screen_cast_proxy_new_sync (connection,
-                                                   G_DBUS_PROXY_FLAGS_NONE,
-                                                   dbus_name,
-                                                   DESKTOP_PORTAL_OBJECT_PATH,
-                                                   NULL,
-                                                   &error);
-  if (impl == NULL)
+  impl = xdp_portal_impls_find (portal_impls, SCREEN_CAST_DBUS_IMPL_IFACE);
+  if (!impl)
     {
-      g_warning ("Failed to create screen cast proxy: %s", error->message);
-      return NULL;
+      g_debug ("Not providing Screen Cast portal: No backend configured");
+      return;
     }
 
-  impl_version = xdp_dbus_impl_screen_cast_get_version (impl);
-
-  g_dbus_proxy_set_default_timeout (G_DBUS_PROXY (impl), G_MAXINT);
-
   screen_cast = g_object_new (screen_cast_get_type (), NULL);
+  screen_cast->impl =
+    xdp_dbus_impl_screen_cast_proxy_new_sync (connection,
+                                              G_DBUS_PROXY_FLAGS_NONE,
+                                              impl->dbus_name,
+                                              DESKTOP_DBUS_PATH,
+                                              NULL,
+                                              &error);
 
-  return G_DBUS_INTERFACE_SKELETON (screen_cast);
-}
+  if (!screen_cast->impl)
+    {
+      g_warning ("Not providing Screen Cast portal: No working backend");
+      return;
+    }
 
-static void
-screen_cast_session_close (XdpSession *session)
-{
-  ScreenCastSession *screen_cast_session = SCREEN_CAST_SESSION (session);
+  g_dbus_proxy_set_default_timeout (G_DBUS_PROXY (screen_cast->impl), G_MAXINT);
 
-  screen_cast_session->state = SCREEN_CAST_SESSION_STATE_CLOSED;
+  xdp_dbus_screen_cast_set_version (XDP_DBUS_SCREEN_CAST (screen_cast), 5);
 
-  xdp_session_persistence_generate_and_save_restore_token (session,
-                                                           SCREEN_CAST_TABLE,
-                                                           screen_cast_session->persist_mode,
-                                                           &screen_cast_session->restore_token,
-                                                           &screen_cast_session->restore_data);
+  g_object_bind_property (G_OBJECT (screen_cast->impl), "supported-source-types",
+                          G_OBJECT (screen_cast), "supported-source-types",
+                          G_BINDING_SYNC_CREATE);
 
-  g_debug ("screen cast session owned by '%s' closed", session->sender);
-}
+  if (xdp_dbus_impl_screen_cast_get_version (screen_cast->impl) >= 2)
+    {
+      g_object_bind_property (G_OBJECT (screen_cast->impl), "supported-cursor-modes",
+                              G_OBJECT (screen_cast), "supported-cursor-modes",
+                              G_BINDING_SYNC_CREATE);
+    }
 
-static void
-screen_cast_session_finalize (GObject *object)
-{
-  ScreenCastSession *screen_cast_session = SCREEN_CAST_SESSION (object);
+  if (xdp_desktop_portal_export (desktop_portal,
+                                 G_DBUS_INTERFACE_SKELETON (screen_cast),
+                                 &error))
+    {
+      g_object_set_data_full (G_OBJECT (desktop_portal),
+                              "-portal-screen-cast",
+                              g_steal_pointer (&screen_cast),
+                              g_object_unref);
 
-  g_clear_pointer (&screen_cast_session->restore_token, g_free);
-  g_clear_pointer (&screen_cast_session->restore_data, g_variant_unref);
-
-  g_list_free_full (screen_cast_session->streams,
-                    (GDestroyNotify)screen_cast_stream_free);
-
-  G_OBJECT_CLASS (screen_cast_session_parent_class)->finalize (object);
-}
-
-static void
-screen_cast_session_init (ScreenCastSession *screen_cast_session)
-{
-}
-
-static void
-screen_cast_session_class_init (ScreenCastSessionClass *klass)
-{
-  GObjectClass *object_class;
-  XdpSessionClass *session_class;
-
-  object_class = G_OBJECT_CLASS (klass);
-  object_class->finalize = screen_cast_session_finalize;
-
-  session_class = (XdpSessionClass *)klass;
-  session_class->close = screen_cast_session_close;
+      g_debug ("Providing Screen Cast portal");
+    }
+  else
+    {
+      g_warning ("Not providing Screen Cast portal: %s", error->message);
+    }
 }
