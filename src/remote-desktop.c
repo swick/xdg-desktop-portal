@@ -217,8 +217,6 @@ remote_desktop_session_finalize (GObject *object)
   g_list_free_full (remote_desktop_session->streams,
                     (GDestroyNotify)screen_cast_stream_free);
 
-  g_clear_object (&remote_desktop_session->remote_desktop);
-
   G_OBJECT_CLASS (remote_desktop_session_parent_class)->finalize (object);
 }
 
@@ -274,7 +272,7 @@ remote_desktop_session_new (RemoteDesktop  *remote_desktop,
     return NULL;
 
   rd_session = REMOTE_DESKTOP_SESSION (session);
-  rd_session->remote_desktop = g_object_ref (remote_desktop);
+  rd_session->remote_desktop = remote_desktop;
 
   g_debug ("remote desktop session owned by '%s' created", session->sender);
 
@@ -356,7 +354,7 @@ handle_create_session (XdpDbusRemoteDesktop *object,
   XdpRequest *request = xdp_request_from_invocation (invocation);
   g_autoptr(GError) error = NULL;
   g_autoptr(XdpDbusImplRequest) impl_request = NULL;
-  XdpSession *session;
+  g_autoptr(XdpSession) session = NULL;
   g_auto(GVariantBuilder) options_builder =
     G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE_VARDICT);
   g_autoptr(GVariant) options = NULL;

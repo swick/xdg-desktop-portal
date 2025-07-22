@@ -1306,6 +1306,7 @@ notification_create (XdpDesktopPortal *desktop_portal)
     (version != NULL) ? g_variant_get_uint32 (version) : 1;
 
   xdp_dbus_notification_set_version (XDP_DBUS_NOTIFICATION (notification), 2);
+
   g_object_bind_property (G_OBJECT (notification->impl), "supported-options",
                           G_OBJECT (notification), "supported-options",
                           G_BINDING_SYNC_CREATE);

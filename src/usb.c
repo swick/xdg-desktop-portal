@@ -470,7 +470,6 @@ xdp_usb_session_dispose (GObject *object)
 {
   XdpUsbSession *usb_session = XDP_USB_SESSION (object);
 
-  g_clear_object (&usb_session->usb);
   g_clear_pointer (&usb_session->available_devices, g_hash_table_destroy);
 
   G_OBJECT_CLASS (xdp_usb_session_parent_class)->dispose (object);
@@ -514,7 +513,7 @@ xdp_usb_session_new (XdpUsb           *usb,
     return NULL;
 
   usb_session = XDP_USB_SESSION (session);
-  usb_session->usb = g_object_ref (usb);
+  usb_session->usb = usb;
 
   g_debug ("[usb] USB session '%s' created", session->id);
 

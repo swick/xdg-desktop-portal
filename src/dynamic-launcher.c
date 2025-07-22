@@ -60,7 +60,6 @@ struct _DynamicLauncher
   XdpDbusDynamicLauncherSkeleton parent_instance;
 
   XdpDbusImplDynamicLauncher *impl;
-
   GMutex transient_permissions_lock;
   GHashTable *transient_permissions;
 };
@@ -1082,6 +1081,7 @@ dynamic_launcher_dispose (GObject *object)
   DynamicLauncher *dl = (DynamicLauncher *) object;
 
   g_clear_object (&dl->impl);
+
   if (dl->transient_permissions)
     {
       g_mutex_clear (&dl->transient_permissions_lock);
