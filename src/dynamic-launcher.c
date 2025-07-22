@@ -495,13 +495,6 @@ set_launcher_data_for_token (DynamicLauncher *dynamic_launcher,
   guint timeout_id;
   g_autoptr(GVariant) launcher_data_wrapped = NULL;
 
-  if (!dynamic_launcher->transient_permissions)
-    {
-      dynamic_launcher->transient_permissions =
-        g_hash_table_new_full (g_str_hash, g_str_equal,
-                               g_free, (GDestroyNotify) g_variant_unref);
-    }
-
   /* Revoke the token if it hasn't been used after 5 minutes, in case of
    * client bugs. This is what the GNOME print portal implementation does.
    */
@@ -1084,6 +1077,21 @@ dynamic_launcher_iface_init (XdpDbusDynamicLauncherIface *iface)
 }
 
 static void
+dynamic_launcher_dispose (GObject *object)
+{
+  DynamicLauncher *dl = (DynamicLauncher *) object;
+
+  g_clear_object (&dl->impl);
+  if (dl->transient_permissions)
+    {
+      g_mutex_clear (&dl->transient_permissions_lock);
+      g_clear_pointer (&dl->transient_permissions, g_hash_table_unref);
+    }
+
+  G_OBJECT_CLASS (dynamic_launcher_parent_class)->dispose (object);
+}
+
+static void
 dynamic_launcher_init (DynamicLauncher *dl)
 {
 }
@@ -1091,6 +1099,9 @@ dynamic_launcher_init (DynamicLauncher *dl)
 static void
 dynamic_launcher_class_init (DynamicLauncherClass *klass)
 {
+  GObjectClass *object_class = G_OBJECT_CLASS (klass);
+
+  object_class->dispose = dynamic_launcher_dispose;
 }
 
 void
@@ -1134,6 +1145,9 @@ dynamic_launcher_create (XdpDesktopPortal *desktop_portal)
                           G_BINDING_SYNC_CREATE);
 
   g_mutex_init (&dynamic_launcher->transient_permissions_lock);
+  dynamic_launcher->transient_permissions =
+    g_hash_table_new_full (g_str_hash, g_str_equal,
+                           g_free, (GDestroyNotify) g_variant_unref);
 
   if (xdp_desktop_portal_export (desktop_portal,
                                  G_DBUS_INTERFACE_SKELETON (dynamic_launcher),

@@ -1500,11 +1500,15 @@ xdp_usb_dispose (GObject *object)
 {
   XdpUsb *self = XDP_USB (object);
 
+  g_clear_object (&self->impl);
+  g_clear_object (&self->gudev_client);
+
   g_clear_pointer (&self->ids_to_devices, g_hash_table_unref);
   g_clear_pointer (&self->syspaths_to_ids, g_hash_table_unref);
   g_clear_pointer (&self->sessions, g_hash_table_unref);
+  g_clear_pointer (&self->sender_infos, g_hash_table_unref);
 
-  g_clear_object (&self->gudev_client);
+  G_OBJECT_CLASS (xdp_usb_parent_class)->dispose (object);
 }
 
 static void
@@ -1602,9 +1606,9 @@ xdp_usb_create (XdpDesktopPortal *desktop_portal)
 
   xdp_dbus_usb_set_version (XDP_DBUS_USB (usb), 1);
 
-  g_signal_connect_object (desktop_portal, "peer-died",
-                           G_CALLBACK (on_peer_died),
-                           usb, G_CONNECT_DEFAULT);
+  g_signal_connect (desktop_portal, "peer-died",
+                    G_CALLBACK (on_peer_died),
+                    usb);
 
   if (xdp_desktop_portal_export (desktop_portal,
                                  G_DBUS_INTERFACE_SKELETON (usb),

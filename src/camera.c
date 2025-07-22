@@ -533,12 +533,6 @@ camera_finalize (GObject *object)
 static void
 camera_init (Camera *camera)
 {
-  g_autoptr(GError) error = NULL;
-
-  xdp_dbus_camera_set_version (XDP_DBUS_CAMERA (camera), 1);
-
-  if (!init_camera_tracker (camera, &error))
-    g_warning ("Failed to track cameras: %s", error->message);
 }
 
 static void
@@ -558,6 +552,20 @@ camera_create (XdpDesktopPortal *desktop_portal)
   camera = g_object_new (camera_get_type (), NULL);
   camera->lockdown = xdp_desktop_portal_get_lockdown_proxy (desktop_portal);
   camera->access_impl = xdp_desktop_portal_get_access_proxy (desktop_portal);
+
+  if (!camera->access_impl)
+    {
+      g_warning ("Not providing Camera portal: No working backend");
+      return;
+    }
+
+  xdp_dbus_camera_set_version (XDP_DBUS_CAMERA (camera), 1);
+
+  if (!init_camera_tracker (camera, &error))
+    {
+      g_warning ("Failed to track cameras: %s", error->message);
+      g_clear_error (&error);
+    }
 
   if (xdp_desktop_portal_export (desktop_portal,
                                  G_DBUS_INTERFACE_SKELETON (camera),

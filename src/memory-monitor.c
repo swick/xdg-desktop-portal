@@ -68,9 +68,9 @@ memory_monitor_iface_init (XdpDbusMemoryMonitorIface *iface)
 
 #ifdef HAS_MEMORY_MONITOR
 static void
-low_memory_warning_cb (GObject *object,
-                       GMemoryMonitorWarningLevel level,
-                       MemoryMonitor *mm)
+on_low_memory_warning (GMemoryMonitor             *object,
+                       GMemoryMonitorWarningLevel  level,
+                       MemoryMonitor              *mm)
 {
   xdp_dbus_memory_monitor_emit_low_memory_warning (XDP_DBUS_MEMORY_MONITOR (mm),
                                                    level);
@@ -80,12 +80,6 @@ low_memory_warning_cb (GObject *object,
 static void
 memory_monitor_init (MemoryMonitor *mm)
 {
-#ifdef HAS_MEMORY_MONITOR
-  mm->monitor = g_memory_monitor_dup_default ();
-  g_signal_connect (mm->monitor, "low-memory-warning", G_CALLBACK (low_memory_warning_cb), mm);
-#endif /* HAS_MEMORY_MONITOR */
-
-  xdp_dbus_memory_monitor_set_version (XDP_DBUS_MEMORY_MONITOR (mm), 1);
 }
 
 static void
@@ -115,6 +109,15 @@ memory_monitor_create (XdpDesktopPortal *desktop_portal)
   g_autoptr(GError) error = NULL;
 
   memory_monitor = g_object_new (memory_monitor_get_type (), NULL);
+
+#ifdef HAS_MEMORY_MONITOR
+  memory_monitor->monitor = g_memory_monitor_dup_default ();
+  g_signal_connect (memory_monitor->monitor, "low-memory-warning",
+                    G_CALLBACK (on_low_memory_warning),
+                    memory_monitor);
+#endif /* HAS_MEMORY_MONITOR */
+
+  xdp_dbus_memory_monitor_set_version (XDP_DBUS_MEMORY_MONITOR (memory_monitor), 1);
 
   if (xdp_desktop_portal_export (desktop_portal,
                                  G_DBUS_INTERFACE_SKELETON (memory_monitor),

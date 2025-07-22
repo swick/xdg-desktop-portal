@@ -1661,6 +1661,16 @@ remote_desktop_iface_init (XdpDbusRemoteDesktopIface *iface)
 }
 
 static void
+remote_desktop_dispose (GObject *object)
+{
+  RemoteDesktop *remote_desktop = (RemoteDesktop *) object;
+
+  g_clear_object (&remote_desktop->impl);
+
+  G_OBJECT_CLASS (remote_desktop_parent_class)->dispose (object);
+}
+
+static void
 remote_desktop_init (RemoteDesktop *remote_desktop)
 {
 }
@@ -1668,6 +1678,9 @@ remote_desktop_init (RemoteDesktop *remote_desktop)
 static void
 remote_desktop_class_init (RemoteDesktopClass *klass)
 {
+  GObjectClass *object_class = G_OBJECT_CLASS (klass);
+
+  object_class->dispose = remote_desktop_dispose;
 }
 
 void

@@ -83,8 +83,10 @@ struct _Background
   XdpDbusImplBackground *impl;
   GFileMonitor *instance_monitor;
   XdpBackgroundMonitor *monitor;
-  GMainContext *monitor_context;
-  GThread *monitor_thread;
+
+  GTask *monitor_task;
+  gboolean check_queued;
+  GCancellable *cancellable;
 
   GHashTable *applications; /* instance ID -> InstanceData */
   GMutex applications_lock;
@@ -650,22 +652,73 @@ check_background_apps (Background *background)
   update_background_monitor_properties (background);
 }
 
-static gpointer
-monitor_background_in_thread (gpointer data)
+static void
+monitor_background_in_thread (GTask        *task,
+                              gpointer      source_object,
+                              gpointer      task_data,
+                              GCancellable *cancellable)
 {
-  Background *background = data;
+  Background *background = source_object;
 
-  while (TRUE)
+  fprintf(stderr, "WHHHHHHEEEEEEEEEEEEEEEEEEEE\n\n\n\n");
+
+  /* We check twice, to avoid killing unlucky apps hit at a bad time */
+  sleep (5);
+
+  if (!g_task_set_return_on_cancel (task, FALSE))
+    return;
+  check_background_apps (background);
+  if (!g_task_set_return_on_cancel (task, TRUE))
+    return;
+
+  sleep (5);
+
+  if (!g_task_set_return_on_cancel (task, FALSE))
+    return;
+  check_background_apps (background);
+  if (!g_task_set_return_on_cancel (task, TRUE))
+    return;
+
+  g_task_return_boolean (task, TRUE);
+}
+
+static void monitor_background (Background *background);
+
+static void
+on_monitor_background_done (GObject      *object,
+                            GAsyncResult *result,
+                            gpointer      user_data)
+{
+  Background *background = (Background *) object;
+  g_autoptr(GTask) task = user_data;
+
+  g_return_if_fail (g_task_is_valid (result, background));
+
+  g_clear_object (&background->monitor_task);
+
+  if (!g_task_propagate_boolean (task, NULL))
+    return;
+
+  /* FIXME: schedule idle? */
+  if (background->check_queued)
+    monitor_background (background);
+}
+
+static void
+monitor_background (Background *background)
+{
+  if (background->monitor_task)
     {
-      g_main_context_iteration (background->monitor_context, TRUE);
-      /* We check twice, to avoid killing unlucky apps hit at a bad time */
-      sleep (5);
-      check_background_apps (background);
-      sleep (5);
-      check_background_apps (background);
+      background->check_queued = TRUE;
+      return;
     }
 
-  return NULL;
+  background->monitor_task = g_task_new (background,
+                                         background->cancellable,
+                                         on_monitor_background_done,
+                                         NULL);
+  g_task_set_return_on_cancel (background->monitor_task, TRUE);
+  g_task_run_in_thread (background->monitor_task, monitor_background_in_thread);
 }
 
 static void
@@ -674,7 +727,7 @@ on_running_apps_changed (gpointer data)
   Background *background = data;
 
   g_debug ("Running app windows changed, wake up monitor thread");
-  g_main_context_wakeup (background->monitor_context);
+  monitor_background (background);
 }
 
 static void
@@ -683,7 +736,7 @@ on_instances_changed (gpointer data)
   Background *background = data;
 
   g_debug ("Running instances changed, wake up monitor thread");
-  g_main_context_wakeup (background->monitor_context);
+  monitor_background (background);
 }
 
 gboolean
@@ -1225,6 +1278,29 @@ background_iface_init (XdpDbusBackgroundIface *iface)
 }
 
 static void
+background_dispose (GObject *object)
+{
+  Background *background = (Background *) object;
+
+  g_clear_object (&background->monitor_task);
+  g_cancellable_cancel (background->cancellable);
+  g_clear_object (&background->cancellable);
+
+  g_clear_object (&background->impl);
+  g_clear_object (&background->access_impl);
+  g_clear_object (&background->instance_monitor);
+  g_clear_object (&background->monitor);
+
+  if (background->applications)
+    {
+      g_clear_pointer (&background->applications, g_hash_table_unref);
+      g_mutex_clear (&background->applications_lock);
+    }
+
+  G_OBJECT_CLASS (background_parent_class)->dispose (object);
+}
+
+static void
 background_init (Background *background)
 {
 }
@@ -1232,6 +1308,9 @@ background_init (Background *background)
 static void
 background_class_init (BackgroundClass *klass)
 {
+  GObjectClass *object_class = G_OBJECT_CLASS (klass);
+
+  object_class->dispose = background_dispose;
 }
 
 void
@@ -1264,7 +1343,7 @@ background_create (XdpDesktopPortal *desktop_portal)
                                              NULL,
                                              &error);
 
-  if (!background->impl)
+  if (!background->impl || !background->access_impl)
     {
       g_warning ("Not providing Background portal: No working backend");
       return;
@@ -1285,20 +1364,9 @@ background_create (XdpDesktopPortal *desktop_portal)
       return;
     }
 
+  g_mutex_init (&background->applications_lock);
   background->applications = g_hash_table_new_full (g_str_hash, g_str_equal,
                                                     g_free, instance_data_free);
-
-  g_mutex_init (&background->applications_lock);
-
-  /* FIXME: clean up
-  g_clear_pointer (&applications, g_hash_table_unref);
-  g_clear_pointer (&monitor_context, g_main_context_unref);
-  */
-
-  background->monitor_context = g_main_context_new ();
-  background->monitor_thread = g_thread_new ("background monitor",
-                                             monitor_background_in_thread,
-                                             background);
 
   g_signal_connect (background->impl, "running-applications-changed",
                     G_CALLBACK (on_running_apps_changed),

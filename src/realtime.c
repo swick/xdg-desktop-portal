@@ -230,7 +230,6 @@ realtime_iface_init (XdpDbusRealtimeIface *iface)
 static void
 realtime_init (Realtime *realtime)
 {
-  xdp_dbus_realtime_set_version (XDP_DBUS_REALTIME (realtime), 1);
 }
 
 static void
@@ -323,6 +322,8 @@ realtime_create (XdpDesktopPortal *desktop_portal)
 
   realtime = g_object_new (realtime_get_type (), NULL);
   realtime->rtkit_proxy = g_steal_pointer (&rtkit_proxy);
+
+  xdp_dbus_realtime_set_version (XDP_DBUS_REALTIME (realtime), 1);
 
   if (realtime->rtkit_proxy)
     load_all_properties (realtime);

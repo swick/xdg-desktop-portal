@@ -93,6 +93,8 @@ proxy_resolver_dispose (GObject *object)
   ProxyResolver *resolver = (ProxyResolver *)object;
 
   g_clear_object (&resolver->resolver);
+
+  G_OBJECT_CLASS (proxy_resolver_parent_class)->dispose (object);
 }
 
 static void
@@ -104,9 +106,6 @@ proxy_resolver_iface_init (XdpDbusProxyResolverIface *iface)
 static void
 proxy_resolver_init (ProxyResolver *resolver)
 {
-  resolver->resolver = g_proxy_resolver_get_default ();
-
-  xdp_dbus_proxy_resolver_set_version (XDP_DBUS_PROXY_RESOLVER (resolver), 1);
 }
 
 static void
@@ -124,6 +123,9 @@ proxy_resolver_create (XdpDesktopPortal *desktop_portal)
   g_autoptr(GError) error = NULL;
 
   proxy_resolver = g_object_new (proxy_resolver_get_type (), NULL);
+  proxy_resolver->resolver = g_proxy_resolver_get_default ();
+
+  xdp_dbus_proxy_resolver_set_version (XDP_DBUS_PROXY_RESOLVER (proxy_resolver), 1);
 
   if (xdp_desktop_portal_export (desktop_portal,
                                  G_DBUS_INTERFACE_SKELETON (proxy_resolver),

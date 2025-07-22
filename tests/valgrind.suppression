@@ -22,20 +22,28 @@
   fun:g_module_close
 }
 
-# This is too broad; need to properly own things to avoid this
 {
-  xdp/notification_init
+  glib/proxy_resolver
   Memcheck:Leak
-  fun:*alloc
+  fun:malloc
   ...
-  fun:notification_init
+  fun:g_libproxy_resolver_init
 }
 
 # This is too broad; need to properly own things to avoid this
-{
-  xdp/dynamic_launcher_init
-  Memcheck:Leak
-  fun:*alloc
-  ...
-  fun:dynamic_launcher_init
-}
+#{
+#  xdp/notification_init
+#  Memcheck:Leak
+#  fun:*alloc
+#  ...
+#  fun:notification_init
+#}
+
+# This is too broad; need to properly own things to avoid this
+#{
+#  xdp/dynamic_launcher_init
+#  Memcheck:Leak
+#  fun:*alloc
+#  ...
+#  fun:dynamic_launcher_init
+#}

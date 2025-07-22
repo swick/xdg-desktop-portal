@@ -915,8 +915,7 @@ handle_open_in_thread_func (GTask *task,
 
   g_signal_connect_object (open_uri->monitor, "changed",
                            G_CALLBACK (on_app_info_changed),
-                           request,
-                           0);
+                           request, G_CONNECT_DEFAULT);
 
   g_debug ("Opening app chooser");
 
@@ -1150,14 +1149,28 @@ open_uri_iface_init (XdpDbusOpenURIIface *iface)
 }
 
 static void
+open_uri_dispose (GObject *object)
+{
+  OpenURI *openuri = (OpenURI *) object;
+
+  g_clear_object (&openuri->impl);
+  g_clear_object (&openuri->monitor);
+  g_clear_object (&openuri->lockdown);
+
+  G_OBJECT_CLASS (open_uri_parent_class)->dispose (object);
+}
+
+static void
 open_uri_init (OpenURI *openuri)
 {
-  xdp_dbus_open_uri_set_version (XDP_DBUS_OPEN_URI (openuri), 5);
 }
 
 static void
 open_uri_class_init (OpenURIClass *klass)
 {
+  GObjectClass *object_class = G_OBJECT_CLASS (klass);
+
+  object_class->dispose = open_uri_dispose;
 }
 
 void
@@ -1196,6 +1209,8 @@ open_uri_create (XdpDesktopPortal *desktop_portal)
 
   g_dbus_proxy_set_default_timeout (G_DBUS_PROXY (open_uri->impl),
                                     G_MAXINT);
+
+  xdp_dbus_open_uri_set_version (XDP_DBUS_OPEN_URI (open_uri), 5);
 
   if (xdp_desktop_portal_export (desktop_portal,
                                  G_DBUS_INTERFACE_SKELETON (open_uri),

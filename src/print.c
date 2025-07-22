@@ -332,14 +332,27 @@ print_iface_init (XdpDbusPrintIface *iface)
 }
 
 static void
+print_dispose (GObject *object)
+{
+  Print *print = (Print *) object;
+
+  g_clear_object (&print->impl);
+  g_clear_object (&print->lockdown);
+
+  G_OBJECT_CLASS (print_parent_class)->dispose (object);
+}
+
+static void
 print_init (Print *print)
 {
-  xdp_dbus_print_set_version (XDP_DBUS_PRINT (print), 3);
 }
 
 static void
 print_class_init (PrintClass *klass)
 {
+  GObjectClass *object_class = G_OBJECT_CLASS (klass);
+
+  object_class->dispose = print_dispose;
 }
 
 void
@@ -375,6 +388,8 @@ print_create (XdpDesktopPortal *desktop_portal)
       g_warning ("Not providing Print portal: No working backend");
       return;
     }
+
+  xdp_dbus_print_set_version (XDP_DBUS_PRINT (print), 3);
 
   g_dbus_proxy_set_default_timeout (G_DBUS_PROXY (print->impl), G_MAXINT);
 

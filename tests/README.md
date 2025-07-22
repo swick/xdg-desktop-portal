@@ -85,6 +85,8 @@ Some optional environment variables that can be set to help with debugging.
 * `XDG_PERMISSION_STORE_WAIT_FOR_DEBUGGER`: Makes xdg-permission-store wait
     for a debugger to attach by raising SIGSTOP
 
+* `XDP_TEST_VALGRIND`: Run x-d-p with valgrind
+
 Internal environment variables the tests use via pytest fixtures to set up the
 environment they need.
 

@@ -674,6 +674,16 @@ global_shortcuts_iface_init (XdpDbusGlobalShortcutsIface *iface)
 }
 
 static void
+global_shortcuts_dispose (GObject *object)
+{
+  GlobalShortcuts *global_shortcuts = (GlobalShortcuts *) object;
+
+  g_clear_object (&global_shortcuts->impl);
+
+  G_OBJECT_CLASS (global_shortcuts_parent_class)->dispose (object);
+}
+
+static void
 global_shortcuts_init (GlobalShortcuts *global_shortcuts)
 {
 }
@@ -681,6 +691,10 @@ global_shortcuts_init (GlobalShortcuts *global_shortcuts)
 static void
 global_shortcuts_class_init (GlobalShortcutsClass *klass)
 {
+  GObjectClass *object_class = G_OBJECT_CLASS (klass);
+
+  object_class->dispose = global_shortcuts_dispose;
+
   quark_request_session =
     g_quark_from_static_string ("-xdp-request-global-shortcuts-session");
 }

@@ -395,6 +395,17 @@ wallpaper_iface_init (XdpDbusWallpaperIface *iface)
 }
 
 static void
+wallpaper_dispose (GObject *object)
+{
+  Wallpaper *wallpaper = (Wallpaper *) object;
+
+  g_clear_object (&wallpaper->impl);
+  g_clear_object (&wallpaper->access_impl);
+
+  G_OBJECT_CLASS (wallpaper_parent_class)->dispose (object);
+}
+
+static void
 wallpaper_init (Wallpaper *wallpaper)
 {
 }
@@ -402,6 +413,9 @@ wallpaper_init (Wallpaper *wallpaper)
 static void
 wallpaper_class_init (WallpaperClass *klass)
 {
+  GObjectClass *object_class = G_OBJECT_CLASS (klass);
+
+  object_class->dispose = wallpaper_dispose;
 }
 
 void
@@ -432,7 +446,7 @@ wallpaper_create (XdpDesktopPortal *desktop_portal)
                                             NULL,
                                             &error);
 
-  if (!wallpaper->impl)
+  if (!wallpaper->impl || !wallpaper->access_impl)
     {
       g_warning ("Not providing Wallpaper portal: No working backend");
       return;

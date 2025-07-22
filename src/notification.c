@@ -1243,6 +1243,16 @@ notification_iface_init (XdpDbusNotificationIface *iface)
 }
 
 static void
+notification_dispose (GObject *object)
+{
+  Notification *notification = (Notification *) object;
+
+  g_clear_object (&notification->impl);
+
+  G_OBJECT_CLASS (notification_parent_class)->dispose (object);
+}
+
+static void
 notification_init (Notification *notification)
 {
 }
@@ -1250,6 +1260,9 @@ notification_init (Notification *notification)
 static void
 notification_class_init (NotificationClass *klass)
 {
+  GObjectClass *object_class = G_OBJECT_CLASS (klass);
+
+  object_class->dispose = notification_dispose;
 }
 
 void

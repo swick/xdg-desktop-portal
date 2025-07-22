@@ -216,26 +216,36 @@ network_monitor_iface_init (XdpDbusNetworkMonitorIface *iface)
 }
 
 static void
-network_changed (GObject *object,
-                 gboolean network_available,
-                 NetworkMonitor *nm)
+on_network_changed (GObject  *object,
+                    gboolean  network_available,
+                    gpointer  user_data)
 {
+  NetworkMonitor *nm = user_data;
+
   xdp_dbus_network_monitor_emit_changed (XDP_DBUS_NETWORK_MONITOR (nm));
+}
+
+static void
+network_monitor_dispose (GObject *object)
+{
+  NetworkMonitor *network_monitor = (NetworkMonitor *) object;
+
+  g_clear_object (&network_monitor->monitor);
+
+  G_OBJECT_CLASS (network_monitor_parent_class)->dispose (object);
 }
 
 static void
 network_monitor_init (NetworkMonitor *nm)
 {
-  nm->monitor = g_network_monitor_get_default ();
-
-  g_signal_connect (nm->monitor, "network-changed", G_CALLBACK (network_changed), nm);
-
-  xdp_dbus_network_monitor_set_version (XDP_DBUS_NETWORK_MONITOR (nm), 3);
 }
 
 static void
 network_monitor_class_init (NetworkMonitorClass *klass)
 {
+  GObjectClass *object_class = G_OBJECT_CLASS (klass);
+
+  object_class->dispose = network_monitor_dispose;
 }
 
 void
@@ -245,6 +255,14 @@ network_monitor_create (XdpDesktopPortal *desktop_portal)
   g_autoptr(GError) error = NULL;
 
   network_monitor = g_object_new (network_monitor_get_type (), NULL);
+
+  network_monitor->monitor = g_network_monitor_get_default ();
+
+  g_signal_connect (network_monitor->monitor, "network-changed",
+                    G_CALLBACK (on_network_changed),
+                    network_monitor);
+
+  xdp_dbus_network_monitor_set_version (XDP_DBUS_NETWORK_MONITOR (network_monitor), 3);
 
   if (xdp_desktop_portal_export (desktop_portal,
                                  G_DBUS_INTERFACE_SKELETON (network_monitor),

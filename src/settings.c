@@ -260,7 +260,6 @@ settings_iface_init (XdpDbusSettingsIface *iface)
 static void
 settings_init (Settings *settings)
 {
-  xdp_dbus_settings_set_version (XDP_DBUS_SETTINGS (settings), 2);
 }
 
 static void
@@ -346,6 +345,8 @@ settings_create (XdpDesktopPortal *desktop_portal)
 
   settings->n_impls = impl_proxies->len;
   settings->impls = (XdpDbusImplSettings **) g_ptr_array_steal (impl_proxies, NULL);
+
+  xdp_dbus_settings_set_version (XDP_DBUS_SETTINGS (settings), 2);
 
   if (xdp_desktop_portal_export (desktop_portal,
                                  G_DBUS_INTERFACE_SKELETON (settings),

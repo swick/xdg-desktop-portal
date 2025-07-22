@@ -324,6 +324,16 @@ email_iface_init (XdpDbusEmailIface *iface)
 }
 
 static void
+email_dispose (GObject *object)
+{
+  Email *email = (Email *) object;
+
+  g_clear_object (&email->impl);
+
+  G_OBJECT_CLASS (email_parent_class)->dispose (object);
+}
+
+static void
 email_init (Email *email)
 {
 }
@@ -331,6 +341,9 @@ email_init (Email *email)
 static void
 email_class_init (EmailClass *klass)
 {
+  GObjectClass *object_class = G_OBJECT_CLASS (klass);
+
+  object_class->dispose = email_dispose;
 }
 
 void

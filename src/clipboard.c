@@ -467,6 +467,16 @@ clipboard_iface_init (XdpDbusClipboardIface *iface)
 }
 
 static void
+clipboard_dispose (GObject *object)
+{
+  Clipboard *clipboard = (Clipboard *) object;
+
+  g_clear_object (&clipboard->impl);
+
+  G_OBJECT_CLASS (clipboard_parent_class)->dispose (object);
+}
+
+static void
 clipboard_init (Clipboard *clipboard)
 {
 }
@@ -474,6 +484,9 @@ clipboard_init (Clipboard *clipboard)
 static void
 clipboard_class_init (ClipboardClass *klass)
 {
+  GObjectClass *object_class = G_OBJECT_CLASS (klass);
+
+  object_class->dispose = clipboard_dispose;
 }
 
 static void

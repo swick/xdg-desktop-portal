@@ -497,21 +497,33 @@ inhibit_iface_init (XdpDbusInhibitIface *iface)
 }
 
 static void
+inhibit_dispose (GObject *object)
+{
+  Inhibit *inhibit = (Inhibit *) object;
+
+  g_clear_object (&inhibit->impl);
+
+  G_OBJECT_CLASS (inhibit_parent_class)->dispose (object);
+}
+
+static void
 inhibit_init (Inhibit *inhibit)
 {
-  xdp_dbus_inhibit_set_version (XDP_DBUS_INHIBIT (inhibit), 3);
 }
 
 static void
 inhibit_class_init (InhibitClass *klass)
 {
+  GObjectClass *object_class = G_OBJECT_CLASS (klass);
+
+  object_class->dispose = inhibit_dispose;
 }
 
 static void
-state_changed_cb (XdpDbusImplInhibit *impl,
-                  const char *session_id,
-                  GVariant *state,
-                  gpointer data)
+on_state_changed (XdpDbusImplInhibit *impl,
+                  const char         *session_id,
+                  GVariant           *state,
+                  gpointer            data)
 {
   GDBusConnection *connection = g_dbus_proxy_get_connection (G_DBUS_PROXY (impl));
   g_autoptr(XdpSession) session = xdp_session_lookup (session_id);
@@ -568,9 +580,11 @@ inhibit_create (XdpDesktopPortal *desktop_portal)
 
   g_dbus_proxy_set_default_timeout (G_DBUS_PROXY (inhibit->impl), G_MAXINT);
 
-  g_signal_connect (inhibit->impl, "state-changed",
-                    G_CALLBACK (state_changed_cb),
-                    inhibit);
+  g_signal_connect_object (inhibit->impl, "state-changed",
+                           G_CALLBACK (on_state_changed),
+                           inhibit, G_CONNECT_DEFAULT);
+
+  xdp_dbus_inhibit_set_version (XDP_DBUS_INHIBIT (inhibit), 3);
 
   if (xdp_desktop_portal_export (desktop_portal,
                                  G_DBUS_INTERFACE_SKELETON (inhibit),

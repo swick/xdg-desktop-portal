@@ -239,6 +239,16 @@ account_iface_init (XdpDbusAccountIface *iface)
 }
 
 static void
+account_dispose (GObject *object)
+{
+  Account *account = (Account *) object;
+
+  g_clear_object (&account->impl);
+
+  G_OBJECT_CLASS (account_parent_class)->dispose (object);
+}
+
+static void
 account_init (Account *account)
 {
 }
@@ -246,6 +256,9 @@ account_init (Account *account)
 static void
 account_class_init (AccountClass *klass)
 {
+  GObjectClass *object_class = G_OBJECT_CLASS (klass);
+
+  object_class->dispose = account_dispose;
 }
 
 void

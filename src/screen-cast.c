@@ -1104,6 +1104,16 @@ screen_cast_iface_init (XdpDbusScreenCastIface *iface)
 }
 
 static void
+screen_cast_dispose (GObject *object)
+{
+  ScreenCast *screen_cast = (ScreenCast *) object;
+
+  g_clear_object (&screen_cast->impl);
+
+  G_OBJECT_CLASS (screen_cast_parent_class)->dispose (object);
+}
+
+static void
 screen_cast_init (ScreenCast *screen_cast)
 {
 }
@@ -1111,6 +1121,10 @@ screen_cast_init (ScreenCast *screen_cast)
 static void
 screen_cast_class_init (ScreenCastClass *klass)
 {
+  GObjectClass *object_class = G_OBJECT_CLASS (klass);
+
+  object_class->dispose = screen_cast_dispose;
+
   quark_request_session =
     g_quark_from_static_string ("-xdp-request-screen-cast-session");
 }

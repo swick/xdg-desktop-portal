@@ -139,19 +139,29 @@ game_mode_iface_init (XdpDbusGameModeIface *iface)
   iface->handle_query_status_by_pidfd = handle_query_status_by_pidfd;
   iface->handle_register_game_by_pidfd = handle_register_game_by_pidfd;
   iface->handle_unregister_game_by_pidfd = handle_unregister_game_by_pidfd;
+}
 
+static void
+game_mode_dispose (GObject *object)
+{
+  GameMode *gamemode = (GameMode *) object;
 
+  g_clear_object (&gamemode->client);
+
+  G_OBJECT_CLASS (game_mode_parent_class)->dispose (object);
 }
 
 static void
 game_mode_init (GameMode *gamemode)
 {
-  xdp_dbus_game_mode_set_version (XDP_DBUS_GAME_MODE (gamemode), 4);
 }
 
 static void
 game_mode_class_init (GameModeClass *klass)
 {
+  GObjectClass *object_class = G_OBJECT_CLASS (klass);
+
+  object_class->dispose = game_mode_dispose;
 }
 
 /* internal helpers */
@@ -615,9 +625,11 @@ game_mode_create (XdpDesktopPortal *desktop_portal)
   gamemode = g_object_new (game_mode_get_type (), NULL);
   gamemode->client = g_steal_pointer (&client);
 
-  g_signal_connect (gamemode->client, "g-properties-changed",
-                    G_CALLBACK (on_client_properties_changed),
-                    gamemode);
+  xdp_dbus_game_mode_set_version (XDP_DBUS_GAME_MODE (gamemode), 4);
+
+  g_signal_connect_object (gamemode->client, "g-properties-changed",
+                           G_CALLBACK (on_client_properties_changed),
+                           gamemode, G_CONNECT_DEFAULT);
 
   update_active_state_from_cache (gamemode, gamemode->client);
 

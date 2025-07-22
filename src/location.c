@@ -160,10 +160,10 @@ location_session_new (GVariant *options,
 /*** GeoClue integration ***/
 
 static void
-location_updated (GeoclueClient *client,
-                  const char *old_location,
-                  const char *new_location,
-                  gpointer data)
+on_location_updated (GeoclueClient *client,
+                     const char    *old_location,
+                     const char    *new_location,
+                     gpointer       data)
 {
   XdpSession *session = data;
   g_autoptr(GVariant) ret = NULL;
@@ -259,7 +259,8 @@ location_session_start (LocationSession *loc_session)
                 NULL);
   
   g_signal_connect (loc_session->client, "location-updated",
-                    G_CALLBACK (location_updated), loc_session);
+                    G_CALLBACK (on_location_updated),
+                    loc_session);
 
   if (!geoclue_client_call_start_sync (loc_session->client, NULL, &error))
     {
@@ -741,14 +742,28 @@ location_iface_init (XdpDbusLocationIface *iface)
 }
 
 static void
+location_dispose (GObject *object)
+{
+  Location *location = (Location *) object;
+
+  g_clear_object (&location->access_impl);
+  g_clear_object (&location->lockdown);
+
+  G_OBJECT_CLASS (location_parent_class)->dispose (object);
+}
+
+static void
 location_init (Location *location)
 {
-  xdp_dbus_location_set_version (XDP_DBUS_LOCATION (location), 1);
 }
 
 static void
 location_class_init (LocationClass *klass)
 {
+  GObjectClass *object_class = G_OBJECT_CLASS (klass);
+
+  object_class->dispose = location_dispose;
+
   quark_request_session = g_quark_from_static_string ("-xdp-request-location-session");
 }
 
@@ -761,6 +776,14 @@ location_create (XdpDesktopPortal *desktop_portal)
   location = g_object_new (location_get_type (), NULL);
   location->lockdown = xdp_desktop_portal_get_lockdown_proxy (desktop_portal);
   location->access_impl = xdp_desktop_portal_get_access_proxy (desktop_portal);
+
+  if (!location->access_impl)
+    {
+      g_warning ("Not providing Location portal: No working backend");
+      return;
+    }
+
+  xdp_dbus_location_set_version (XDP_DBUS_LOCATION (location), 1);
 
   if (xdp_desktop_portal_export (desktop_portal,
                                  G_DBUS_INTERFACE_SKELETON (location),

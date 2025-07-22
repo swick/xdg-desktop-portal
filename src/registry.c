@@ -98,7 +98,6 @@ registry_iface_init (XdpDbusHostRegistryIface *iface)
 static void
 registry_init (Registry *registry)
 {
-  xdp_dbus_host_registry_set_version (XDP_DBUS_HOST_REGISTRY (registry), 1);
 }
 
 static void
@@ -113,6 +112,8 @@ registry_create (XdpDesktopPortal *desktop_portal)
   g_autoptr(GError) error = NULL;
 
   registry = g_object_new (registry_get_type (), NULL);
+
+  xdp_dbus_host_registry_set_version (XDP_DBUS_HOST_REGISTRY (registry), 1);
 
   /* IMPORTANT: this is exported on the host! */
   if (xdp_desktop_portal_export_host (desktop_portal,

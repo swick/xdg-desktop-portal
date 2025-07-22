@@ -1202,6 +1202,16 @@ on_zones_changed_cb (XdpDbusImplInputCapture *impl,
 }
 
 static void
+input_capture_dispose (GObject *object)
+{
+  InputCapture *input_capture = (InputCapture *) object;
+
+  g_clear_object (&input_capture->impl);
+
+  G_OBJECT_CLASS (input_capture_parent_class)->dispose (object);
+}
+
+static void
 input_capture_init (InputCapture *input_capture)
 {
 }
@@ -1209,6 +1219,10 @@ input_capture_init (InputCapture *input_capture)
 static void
 input_capture_class_init (InputCaptureClass *klass)
 {
+  GObjectClass *object_class = G_OBJECT_CLASS (klass);
+
+  object_class->dispose = input_capture_dispose;
+
   quark_request_session =
     g_quark_from_static_string ("-xdp-request-capture-input-session");
 }

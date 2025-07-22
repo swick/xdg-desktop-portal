@@ -139,7 +139,6 @@ trash_iface_init (XdpDbusTrashIface *iface)
 static void
 trash_init (Trash *trash)
 {
-  xdp_dbus_trash_set_version (XDP_DBUS_TRASH (trash), 1);
 }
 
 static void
@@ -154,6 +153,8 @@ trash_create (XdpDesktopPortal *desktop_portal)
   g_autoptr(GError) error = NULL;
 
   trash = g_object_new (trash_get_type (), NULL);
+
+  xdp_dbus_trash_set_version (XDP_DBUS_TRASH (trash), 1);
 
   if (xdp_desktop_portal_export (desktop_portal,
                                  G_DBUS_INTERFACE_SKELETON (trash),

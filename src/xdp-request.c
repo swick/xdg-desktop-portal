@@ -245,7 +245,6 @@ xdp_request_init_invocation (GDBusMethodInvocation *invocation,
                     G_CALLBACK (request_authorize_callback),
                     request->sender);
 
-
   g_object_set_data_full (G_OBJECT (invocation), "request", request, g_object_unref);
 }
 

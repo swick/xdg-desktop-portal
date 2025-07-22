@@ -470,6 +470,17 @@ screenshot_iface_init (XdpDbusScreenshotIface *iface)
 }
 
 static void
+screenshot_dispose (GObject *object)
+{
+  Screenshot *screenshot = (Screenshot *) object;
+
+  g_clear_object (&screenshot->impl);
+  g_clear_object (&screenshot->access_impl);
+
+  G_OBJECT_CLASS (screenshot_parent_class)->dispose (object);
+}
+
+static void
 screenshot_init (Screenshot *screenshot)
 {
 }
@@ -477,6 +488,9 @@ screenshot_init (Screenshot *screenshot)
 static void
 screenshot_class_init (ScreenshotClass *klass)
 {
+  GObjectClass *object_class = G_OBJECT_CLASS (klass);
+
+  object_class->dispose = screenshot_dispose;
 }
 
 void
@@ -508,7 +522,7 @@ screenshot_create (XdpDesktopPortal *desktop_portal)
                                              NULL,
                                              &error);
 
-  if (!screenshot->impl)
+  if (!screenshot->impl || !screenshot->access_impl)
     {
       g_warning ("Not providing Screenshot portal: No working backend");
       return;

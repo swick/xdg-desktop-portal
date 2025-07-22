@@ -898,6 +898,17 @@ file_chooser_iface_init (XdpDbusFileChooserIface *iface)
 }
 
 static void
+file_chooser_dispose (GObject *object)
+{
+  FileChooser *fc = (FileChooser *) object;
+
+  g_clear_object (&fc->impl);
+  g_clear_object (&fc->lockdown);
+
+  G_OBJECT_CLASS (file_chooser_parent_class)->dispose (object);
+}
+
+static void
 file_chooser_init (FileChooser *fc)
 {
 }
@@ -905,6 +916,9 @@ file_chooser_init (FileChooser *fc)
 static void
 file_chooser_class_init (FileChooserClass *klass)
 {
+  GObjectClass *object_class = G_OBJECT_CLASS (klass);
+
+  object_class->dispose = file_chooser_dispose;
 }
 
 void

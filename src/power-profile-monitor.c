@@ -68,9 +68,9 @@ power_profile_monitor_iface_init (XdpDbusPowerProfileMonitorIface *iface)
 
 #ifdef HAS_POWER_PROFILE_MONITOR
 static void
-power_saver_enabled_changed_cb (GObject             *gobject,
-                                GParamSpec          *pspec,
-                                PowerProfileMonitor *ppm)
+on_power_saver_enabled_changed (GPowerProfileMonitor *monitor,
+                                GParamSpec           *pspec,
+                                PowerProfileMonitor  *ppm)
 {
   xdp_dbus_power_profile_monitor_set_power_saver_enabled (XDP_DBUS_POWER_PROFILE_MONITOR (ppm),
                                                           g_power_profile_monitor_get_power_saver_enabled (ppm->monitor));
@@ -80,12 +80,6 @@ power_saver_enabled_changed_cb (GObject             *gobject,
 static void
 power_profile_monitor_init (PowerProfileMonitor *ppm)
 {
-#ifdef HAS_POWER_PROFILE_MONITOR
-  ppm->monitor = g_power_profile_monitor_dup_default ();
-  g_signal_connect (ppm->monitor, "notify::power-saver-enabled", G_CALLBACK (power_saver_enabled_changed_cb), ppm);
-#endif /* HAS_POWER_PROFILE_MONITOR */
-
-  xdp_dbus_power_profile_monitor_set_version (XDP_DBUS_POWER_PROFILE_MONITOR (ppm), 1);
 }
 
 static void
@@ -115,6 +109,16 @@ power_profile_monitor_create (XdpDesktopPortal *desktop_portal)
   g_autoptr(GError) error = NULL;
 
   power_profile_monitor = g_object_new (power_profile_monitor_get_type (), NULL);
+
+#ifdef HAS_POWER_PROFILE_MONITOR
+  power_profile_monitor->monitor = g_power_profile_monitor_dup_default ();
+  g_signal_connect (power_profile_monitor->monitor,
+                    "notify::power-saver-enabled",
+                    G_CALLBACK (on_power_saver_enabled_changed),
+                    power_profile_monitor);
+#endif /* HAS_POWER_PROFILE_MONITOR */
+
+  xdp_dbus_power_profile_monitor_set_version (XDP_DBUS_POWER_PROFILE_MONITOR (power_profile_monitor), 1);
 
   if (xdp_desktop_portal_export (desktop_portal,
                                  G_DBUS_INTERFACE_SKELETON (power_profile_monitor),

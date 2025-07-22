@@ -186,6 +186,16 @@ secret_iface_init (XdpDbusSecretIface *iface)
 }
 
 static void
+secret_dispose (GObject *object)
+{
+  Secret *secret = (Secret *) object;
+
+  g_clear_object (&secret->impl);
+
+  G_OBJECT_CLASS (secret_parent_class)->dispose (object);
+}
+
+static void
 secret_init (Secret *secret)
 {
 }
@@ -193,6 +203,9 @@ secret_init (Secret *secret)
 static void
 secret_class_init (SecretClass *klass)
 {
+  GObjectClass *object_class = G_OBJECT_CLASS (klass);
+
+  object_class->dispose = secret_dispose;
 }
 
 void
