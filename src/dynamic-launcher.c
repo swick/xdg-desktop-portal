@@ -558,7 +558,7 @@ prepare_install_done (GObject      *source,
 
       if (!xdp_filter_options (results, &results_builder,
                                response_options, G_N_ELEMENTS (response_options),
-                               &error) ||
+                               NULL, &error) ||
           !g_variant_lookup (results, "name", "&s", &chosen_name) ||
           chosen_name[0] == '\0' ||
           !g_variant_lookup (results, "icon", "v", &chosen_icon))
@@ -595,6 +595,7 @@ static gboolean
 validate_url (const char  *key,
               GVariant    *value,
               GVariant    *options,
+              gpointer     user_data,
               GError     **error)
 {
   const char *url = g_variant_get_string (value, NULL);
@@ -613,17 +614,17 @@ validate_url (const char  *key,
   return TRUE;
 }
 
-/* FIXME: To get rid of this global, we need to be able to pass in a pointer
- * to the validate functions of xdp_filter_options
- */
-static guint32 supported_launcher_types = 0;
-
 static gboolean
 validate_launcher_type (const char  *key,
                         GVariant    *value,
                         GVariant    *options,
+                        gpointer     user_data,
                         GError     **error)
 {
+  DynamicLauncher *dynamic_launcher = user_data;
+  guint32 supported_launcher_types =
+    xdp_dbus_dynamic_launcher_get_supported_launcher_types (
+    XDP_DBUS_DYNAMIC_LAUNCHER (dynamic_launcher));
   guint32 launcher_type = g_variant_get_uint32 (value);
 
   if (__builtin_popcount (launcher_type) != 1)
@@ -689,7 +690,8 @@ handle_prepare_install (XdpDbusDynamicLauncher *object,
   xdp_request_export (request, g_dbus_method_invocation_get_connection (invocation));
 
   if (!xdp_filter_options (arg_options, &opt_builder,
-                           prepare_install_options, G_N_ELEMENTS (prepare_install_options), &error))
+                           prepare_install_options, G_N_ELEMENTS (prepare_install_options),
+                           dynamic_launcher, &error))
     {
       g_dbus_method_invocation_return_gerror (invocation, error);
       return G_DBUS_METHOD_INVOCATION_HANDLED;
@@ -1130,9 +1132,6 @@ dynamic_launcher_create (XdpDesktopPortal *desktop_portal)
   g_object_bind_property (G_OBJECT (dynamic_launcher->impl), "supported-launcher-types",
                           G_OBJECT (dynamic_launcher), "supported-launcher-types",
                           G_BINDING_SYNC_CREATE);
-
-  supported_launcher_types = xdp_dbus_dynamic_launcher_get_supported_launcher_types (
-    XDP_DBUS_DYNAMIC_LAUNCHER (dynamic_launcher));
 
   g_mutex_init (&dynamic_launcher->transient_permissions_lock);
 

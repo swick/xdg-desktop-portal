@@ -838,7 +838,7 @@ handle_create_session (XdpDbusUsb            *object,
                            &options_builder,
                            usb_create_session_options,
                            G_N_ELEMENTS (usb_create_session_options),
-                           &error))
+                           NULL, &error))
     {
       g_dbus_method_invocation_return_gerror (invocation, error);
       return G_DBUS_METHOD_INVOCATION_HANDLED;
@@ -943,7 +943,7 @@ handle_enumerate_devices (XdpDbusUsb            *object,
   if (!xdp_filter_options (arg_options, &options_builder,
                            usb_enumerate_devices_options,
                            G_N_ELEMENTS (usb_enumerate_devices_options),
-                           &error))
+                           NULL, &error))
     {
       g_dbus_method_invocation_return_gerror (invocation, error);
       return G_DBUS_METHOD_INVOCATION_HANDLED;
@@ -1227,7 +1227,7 @@ handle_acquire_devices (XdpDbusUsb            *object,
                            &options_builder,
                            usb_acquire_devices_options,
                            G_N_ELEMENTS (usb_acquire_devices_options),
-                           &error))
+                           NULL, &error))
     {
       g_dbus_method_invocation_return_gerror (invocation, error);
       return G_DBUS_METHOD_INVOCATION_HANDLED;
@@ -1467,7 +1467,7 @@ handle_release_devices (XdpDbusUsb            *object,
                            &options_builder,
                            usb_release_devices_options,
                            G_N_ELEMENTS (usb_release_devices_options),
-                           &error))
+                           NULL, &error))
     {
       g_dbus_method_invocation_return_gerror (invocation, error);
       return G_DBUS_METHOD_INVOCATION_HANDLED;

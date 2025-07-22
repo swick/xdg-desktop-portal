@@ -176,10 +176,11 @@ handle_inhibit_in_thread_func (GTask *task,
 }
 
 static gboolean
-validate_reason (const char *key,
-                 GVariant *value,
-                 GVariant *options,
-                 GError **error)
+validate_reason (const char  *key,
+                 GVariant    *value,
+                 GVariant    *options,
+                 gpointer     user_data,
+                 GError     **error)
 {
   const char *string = g_variant_get_string (value, NULL);
 
@@ -226,7 +227,7 @@ handle_inhibit (XdpDbusInhibit *object,
 
   xdp_filter_options (arg_options, &opt_builder,
                       inhibit_options, G_N_ELEMENTS (inhibit_options),
-                      NULL);
+                      NULL, NULL);
 
   options = g_variant_ref_sink (g_variant_builder_end (&opt_builder));
 

@@ -108,6 +108,7 @@ static gboolean
 validate_supported_output_file_formats (const char  *key,
                                         GVariant    *value,
                                         GVariant    *options,
+                                        gpointer     user_data,
                                         GError     **error)
 {
   const char * const supported_output_file_formats[] = {
@@ -189,7 +190,8 @@ handle_print (XdpDbusPrint *object,
   xdp_request_export (request, g_dbus_method_invocation_get_connection (invocation));
 
   xdp_filter_options (arg_options, &opt_builder,
-                      print_options, G_N_ELEMENTS (print_options), NULL);
+                      print_options, G_N_ELEMENTS (print_options),
+                      NULL, NULL);
   xdp_dbus_impl_print_call_print(print->impl,
                                  request->id,
                                  app_id,
@@ -243,7 +245,7 @@ prepare_print_done (GObject *source,
       if (response == 0)
         xdp_filter_options (options, &opt_builder,
                             response_options, G_N_ELEMENTS (response_options),
-                            NULL);
+                            NULL, NULL);
 
       xdp_dbus_request_emit_response (XDP_DBUS_REQUEST (request),
                                       response,
@@ -303,7 +305,8 @@ handle_prepare_print (XdpDbusPrint *object,
   xdp_request_export (request, g_dbus_method_invocation_get_connection (invocation));
 
   xdp_filter_options (arg_options, &opt_builder,
-                      prepare_print_options, G_N_ELEMENTS (prepare_print_options), NULL);
+                      prepare_print_options, G_N_ELEMENTS (prepare_print_options),
+                      NULL, NULL);
   xdp_dbus_impl_print_call_prepare_print (print->impl,
                                           request->id,
                                           app_id,

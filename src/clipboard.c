@@ -163,6 +163,7 @@ handle_set_selection (XdpDbusClipboard *object,
                            &options_builder,
                            clipboard_set_selection_options,
                            G_N_ELEMENTS (clipboard_set_selection_options),
+                           NULL,
                            &error))
     {
       g_dbus_method_invocation_return_gerror (invocation, error);

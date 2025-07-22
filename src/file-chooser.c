@@ -327,10 +327,11 @@ check_filter (GVariant *filter,
 }
 
 static gboolean
-validate_filters (const char *key,
-                  GVariant *value,
-                  GVariant *options,
-                  GError **error)
+validate_filters (const char  *key,
+                  GVariant    *value,
+                  GVariant    *options,
+                  gpointer     user_data,
+                  GError     **error)
 {
   gsize i;
 
@@ -352,10 +353,11 @@ validate_filters (const char *key,
 }
 
 static gboolean
-validate_current_filter (const char *key,
-                         GVariant *value,
-                         GVariant *options,
-                         GError **error)
+validate_current_filter (const char  *key,
+                         GVariant    *value,
+                         GVariant    *options,
+                         gpointer     user_data,
+                         GError     **error)
 {
   g_autoptr(GVariant) filters = NULL;
   gsize i, n_children;
@@ -489,10 +491,11 @@ check_choice (GVariant *choice,
 }
 
 static gboolean
-validate_choices (const char *key,
-                  GVariant *value,
-                  GVariant *options,
-                  GError **error)
+validate_choices (const char  *key,
+                  GVariant    *value,
+                  GVariant    *options,
+                  gpointer     user_data,
+                  GError     **error)
 {
   int i;
 
@@ -547,7 +550,7 @@ handle_open_file (XdpDbusFileChooser *object,
 
   if (!xdp_filter_options (arg_options, &options,
                            open_file_options, G_N_ELEMENTS (open_file_options),
-                           &error))
+                           NULL, &error))
     {
       g_dbus_method_invocation_return_gerror (invocation, error);
       return G_DBUS_METHOD_INVOCATION_HANDLED;
@@ -688,7 +691,7 @@ handle_save_file (XdpDbusFileChooser *object,
 
   if (!xdp_filter_options (arg_options, &options,
                            save_file_options, G_N_ELEMENTS (save_file_options),
-                           &error))
+                           NULL, &error))
     {
       g_dbus_method_invocation_return_gerror (invocation, error);
       return G_DBUS_METHOD_INVOCATION_HANDLED;
@@ -848,7 +851,7 @@ handle_save_files (XdpDbusFileChooser *object,
 
   if (!xdp_filter_options (arg_options, &options,
                            save_files_options, G_N_ELEMENTS (save_files_options),
-                           &error))
+                           NULL, &error))
     {
       g_dbus_method_invocation_return_gerror (invocation, error);
       return G_DBUS_METHOD_INVOCATION_HANDLED;

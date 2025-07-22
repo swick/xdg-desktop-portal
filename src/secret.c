@@ -155,7 +155,7 @@ handle_retrieve_secret (XdpDbusSecret         *object,
 
   if (!xdp_filter_options (arg_options, &options,
                            retrieve_secret_options, G_N_ELEMENTS (retrieve_secret_options),
-                           &error))
+                           NULL, &error))
     {
       g_dbus_method_invocation_return_gerror (invocation, error);
       return G_DBUS_METHOD_INVOCATION_HANDLED;
