@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <stdint.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -622,10 +623,9 @@ validate_launcher_type (const char  *key,
                         GError     **error)
 {
   DynamicLauncher *dynamic_launcher = user_data;
-  guint32 supported_launcher_types =
-    xdp_dbus_dynamic_launcher_get_supported_launcher_types (
-    XDP_DBUS_DYNAMIC_LAUNCHER (dynamic_launcher));
-  guint32 launcher_type = g_variant_get_uint32 (value);
+  uint32_t supported_launcher_types =
+    xdp_dbus_dynamic_launcher_get_supported_launcher_types (XDP_DBUS_DYNAMIC_LAUNCHER (dynamic_launcher));
+  uint32_t launcher_type = g_variant_get_uint32 (value);
 
   if (__builtin_popcount (launcher_type) != 1)
     {

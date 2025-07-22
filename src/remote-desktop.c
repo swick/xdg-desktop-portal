@@ -270,12 +270,13 @@ remote_desktop_session_new (RemoteDesktop  *remote_desktop,
                             "impl-connection", impl_connection,
                             "impl-dbus-name", impl_dbus_name,
                             NULL);
-
-  if (session)
-    g_debug ("remote desktop session owned by '%s' created", session->sender);
+  if (!session)
+    return NULL;
 
   rd_session = REMOTE_DESKTOP_SESSION (session);
   rd_session->remote_desktop = g_object_ref (remote_desktop);
+
+  g_debug ("remote desktop session owned by '%s' created", session->sender);
 
   return rd_session;
 }

@@ -1297,7 +1297,6 @@ notification_create (XdpDesktopPortal *desktop_portal)
                           G_OBJECT (notification), "supported-options",
                           G_BINDING_SYNC_CREATE);
 
-  // FIXME global
   active = g_hash_table_new_full (pair_hash, pair_equal, pair_free, g_free);
 
   g_signal_connect_object (desktop_portal, "peer-died",

@@ -422,9 +422,6 @@ validate_source_types (const char  *key,
   return TRUE;
 }
 
-/* FIXME: remove global when we can pass in pointers to validate */
-static unsigned int available_cursor_modes = 0;
-
 static gboolean
 validate_cursor_mode (const char  *key,
                       GVariant    *value,
@@ -432,6 +429,9 @@ validate_cursor_mode (const char  *key,
                       gpointer     user_data,
                       GError     **error)
 {
+  ScreenCast *screen_cast = user_data;
+  uint32_t available_cursor_modes =
+    xdp_dbus_screen_cast_get_available_cursor_modes (XDP_DBUS_SCREEN_CAST (screen_cast));
   uint32_t mode = g_variant_get_uint32 (value);
 
   if (__builtin_popcount (mode) != 1)
@@ -642,7 +642,7 @@ handle_select_sources (XdpDbusScreenCast *object,
   if (!xdp_filter_options (arg_options, &options_builder,
                            screen_cast_select_sources_options,
                            G_N_ELEMENTS (screen_cast_select_sources_options),
-                           NULL, &error))
+                           screen_cast, &error))
     {
       g_dbus_method_invocation_return_gerror (invocation, error);
       return G_DBUS_METHOD_INVOCATION_HANDLED;
