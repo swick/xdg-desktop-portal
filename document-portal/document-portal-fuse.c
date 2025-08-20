@@ -140,7 +140,6 @@ static GThread *fuse_thread = NULL;
 static struct fuse_session *session = NULL;
 G_LOCK_DEFINE (session);
 static char *mount_path = NULL;
-static pthread_t fuse_pthread = 0;
 static uid_t my_uid;
 static gid_t my_gid;
 
@@ -3499,7 +3498,6 @@ xdp_fuse_thread (gpointer data)
   const char *path;
 
   locker = g_mutex_locker_new (&thread_data->lock);
-  fuse_pthread = pthread_self ();
 
   g_cond_signal (&thread_data->cond);
 
@@ -3653,9 +3651,6 @@ xdp_fuse_exit (void)
 
     if (session)
       fuse_session_exit (session);
-
-    if (fuse_pthread)
-      pthread_kill (fuse_pthread, SIGHUP);
   }
 
   g_clear_pointer (&fuse_thread, g_thread_join);
