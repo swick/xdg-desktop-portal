@@ -1236,10 +1236,10 @@ class TestDocumentFuse:
                 error, traceback = p.exception
                 raise error
 
-    def test_single_thread(self, portals, xdg_document_portal, dbus_con):
+    def test_single_thread(self, xdg_document_portal, portals, dbus_con):
         run_test(3)
 
-    def test_multi_thread(self, portals, xdg_document_portal, dbus_con):
+    def test_multi_thread(self, xdg_document_portal, portals, dbus_con):
         if xdp.run_long_tests():
             return self.parallel(run_test, 20, 10)
         if xdp.is_in_ci():
