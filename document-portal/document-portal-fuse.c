@@ -3475,27 +3475,6 @@ typedef struct {
   GError *error;
 } XdpFuseThreadData;
 
-static void
-xdp_fuse_mainloop (struct fuse_session     *se,
-                   struct fuse_loop_config *loop_config)
-{
-  const char *status;
-
-  fuse_session_loop_mt (se, loop_config);
-
-  status = getenv ("TEST_DOCUMENT_PORTAL_FUSE_STATUS");
-  if (status)
-    {
-      GError *error = NULL;
-      g_autoptr(GString) s = g_string_new ("");
-
-      g_string_append (s, "ok");
-
-      g_file_set_contents (status, s->str, -1, &error);
-      g_assert_no_error (error);
-    }
-}
-
 typedef struct fuse_args XdpAutoFuseArgs;
 G_DEFINE_AUTO_CLEANUP_CLEAR_FUNC (XdpAutoFuseArgs, fuse_opt_free_args);
 
@@ -3568,7 +3547,7 @@ xdp_fuse_thread (gpointer data)
 
   session_locker = g_mutex_locker_new (&G_LOCK_NAME (session));
   g_clear_pointer (&session_locker, g_mutex_locker_free);
-  xdp_fuse_mainloop (session, &loop_config);
+  fuse_session_loop_mt (session, &loop_config);
 
   session_locker = g_mutex_locker_new (&G_LOCK_NAME (session));
   fuse_session_unmount (se);
