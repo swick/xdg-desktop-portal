@@ -98,6 +98,7 @@ xdg_desktop_portal_sources = files(
   'notification.c',
   'open-uri.c',
   'pipewire.c',
+  'policy.c',
   'power-profile-monitor.c',
   'print.c',
   'proxy-resolver.c',

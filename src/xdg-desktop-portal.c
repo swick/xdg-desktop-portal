@@ -56,6 +56,7 @@
 #include "notification.h"
 #include "open-uri.h"
 #include "xdp-permissions.h"
+#include "policy.h"
 #include "power-profile-monitor.h"
 #include "print.h"
 #include "proxy-resolver.h"
@@ -340,6 +341,10 @@ on_bus_acquired (GDBusConnection *connection,
                                     camera_create (connection,
                                                    access_impl->dbus_name,
                                                    lockdown));
+
+      export_portal_implementation (connection,
+                                    xdp_policy_portal_create (connection,
+                                                              access_impl->dbus_name));
 
       tmp = find_portal_implementation ("org.freedesktop.impl.portal.Screenshot");
       if (tmp != NULL)

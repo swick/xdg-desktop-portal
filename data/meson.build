@@ -23,6 +23,7 @@ portal_sources = files(
   'org.freedesktop.portal.NetworkMonitor.xml',
   'org.freedesktop.portal.Notification.xml',
   'org.freedesktop.portal.OpenURI.xml',
+  'org.freedesktop.portal.Policy.xml',
   'org.freedesktop.portal.PowerProfileMonitor.xml',
   'org.freedesktop.portal.Print.xml',
   'org.freedesktop.portal.ProxyResolver.xml',
