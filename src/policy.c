@@ -88,42 +88,106 @@ filter_policies (XdpPolicyPortal  *self,
       return FALSE;
     }
 
-    while (g_variant_iter_next (&policies_iter, "(&sa{sv})",
-                                &policy_id,
-                                NULL))
-      {
-        SupportedPolicy *policy = NULL;
+  while (g_variant_iter_next (&policies_iter, "(&sa{sv})",
+                              &policy_id,
+                              NULL))
+    {
+      SupportedPolicy *policy = NULL;
 
-        for (size_t i = 0; i < G_N_ELEMENTS (supported_policies); i++)
-          {
-            if (g_strcmp0 (policy_id, supported_policies[i].id) != 0)
-              continue;
-
-            policy = &supported_policies[i];
-            break;
-          }
-
-        if (!policy)
-          {
-            g_debug ("Ignoring unknown policy %s", policy_id);
+      for (size_t i = 0; i < G_N_ELEMENTS (supported_policies); i++)
+        {
+          if (g_strcmp0 (policy_id, supported_policies[i].id) != 0)
             continue;
-          }
 
-        if (policy->required_version > self->supported_version)
-          {
-            g_debug ("Ignoring policy %s because the impl does not support it",
+          policy = &supported_policies[i];
+          break;
+        }
+
+      if (!policy)
+        {
+          g_debug ("Ignoring unknown policy %s", policy_id);
+          continue;
+        }
+
+      if (policy->required_version > self->supported_version)
+        {
+          g_debug ("Ignoring policy %s because the impl does not support it",
+                   policy_id);
+          continue;
+        }
+
+      if (g_ptr_array_find (policies, policy, NULL))
+        {
+          g_debug ("Ignoring duplicate policy %s", policy_id);
+          continue;
+        }
+
+      g_ptr_array_add (policies, policy);
+    }
+
+  return TRUE;
+}
+
+static void
+adjust_policy (XdpPolicyPortal *self,
+               SupportedPolicy *policy,
+               gboolean         grant)
+{
+  // FIXME
+  g_debug ("adjust policy %s to %s", policy->id, grant ? "grant" : "deny");
+}
+
+static gboolean
+adjust_policies (XdpPolicyPortal  *self,
+                 GVariant         *results,
+                 GError          **error)
+{
+  GVariantIter results_iter;
+  const char *policy_id;
+  const char *choice;
+
+  if (g_variant_iter_init (&results_iter, results) == 0)
+    return TRUE;
+
+  while (g_variant_iter_next (&results_iter, "(&s&s)",
+                              &policy_id,
+                              &choice))
+    {
+      SupportedPolicy *policy = NULL;
+      gboolean grant = FALSE;
+
+      for (size_t i = 0; i < G_N_ELEMENTS (supported_policies); i++)
+        {
+          if (g_strcmp0 (policy_id, supported_policies[i].id) != 0)
+            continue;
+
+          policy = &supported_policies[i];
+          break;
+        }
+
+      if (!policy)
+        {
+          g_warning ("Impl wants to change policy we don't know about: %s",
                      policy_id);
-            continue;
-          }
+          continue;
+        }
 
-        if (g_ptr_array_find (policies, policy, NULL))
-          {
-            g_debug ("Ignoring duplicate policy %s", policy_id);
-            continue;
-          }
+      if (g_strcmp0 (choice, "true") == 0)
+        {
+          grant = TRUE;
+        }
+      else if (g_strcmp0 (choice, "false") == 0)
+        {
+          grant = FALSE;
+        }
+      else
+        {
+          g_warning ("Impl gave us an unexpected choice");
+          continue;
+        }
 
-        g_ptr_array_add (policies, policy);
-      }
+      adjust_policy (self, policy, grant);
+    }
 
   return TRUE;
 }
@@ -133,6 +197,46 @@ ask_done (GObject      *source_object,
           GAsyncResult *result,
           gpointer      data)
 {
+  g_autoptr(XdpRequest) request = data;
+  g_autoptr(XdpPolicyPortal) self = NULL;
+  XdgDesktopPortalResponseEnum response = XDG_DESKTOP_PORTAL_RESPONSE_OTHER;
+  g_auto(GVariantBuilder) results_builder =
+    G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE_VARDICT);
+  g_autoptr(GVariant) results = NULL;
+  g_autoptr(GError) error = NULL;
+
+  REQUEST_AUTOLOCK (request);
+
+  self = g_object_steal_data (G_OBJECT (request), "-policy-portal-object");
+
+  if (!xdp_dbus_impl_access_call_access_dialog_finish (
+      XDP_DBUS_IMPL_ACCESS (source_object),
+      &response,
+      &results,
+      result,
+      &error))
+    {
+      response = XDG_DESKTOP_PORTAL_RESPONSE_OTHER;
+      g_debug ("Backend call failed: %s", error->message);
+      goto out;
+    }
+
+  if (response == XDG_DESKTOP_PORTAL_RESPONSE_SUCCESS &&
+      !adjust_policies (self, results, &error))
+    {
+      response = XDG_DESKTOP_PORTAL_RESPONSE_OTHER;
+      g_debug ("Granting policies failed: %s", error->message);
+      goto out;
+    }
+
+out:
+  if (request->exported)
+    {
+      xdp_dbus_request_emit_response (XDP_DBUS_REQUEST (request),
+                                      response,
+                                      g_variant_builder_end (&results_builder));
+      xdp_request_unexport (request);
+    }
 }
 
 static gboolean
@@ -205,6 +309,10 @@ handle_ask (XdpDbusPolicy         *object,
 
   if (policies->len > 0)
     {
+      g_object_set_data_full (G_OBJECT (request), "-policy-portal-object",
+                              g_object_ref (self),
+                              g_object_unref);
+
       xdp_dbus_impl_access_call_access_dialog (self->access_impl,
         request->id,
         xdp_app_info_get_id (request->app_info),
@@ -217,9 +325,15 @@ handle_ask (XdpDbusPolicy         *object,
         ask_done,
         g_object_ref (request));
     }
-  else
+  else if (request->exported)
     {
-      // FIXME immediately finish request
+      g_auto(GVariantBuilder) results_builder =
+        G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE_VARDICT);
+
+      xdp_dbus_request_emit_response (XDP_DBUS_REQUEST (request),
+                                      XDG_DESKTOP_PORTAL_RESPONSE_SUCCESS,
+                                      g_variant_builder_end (&results_builder));
+      xdp_request_unexport (request);
     }
 
   return G_DBUS_METHOD_INVOCATION_HANDLED;
