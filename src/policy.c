@@ -109,12 +109,17 @@ filter_policies (XdpPolicyPortal  *self,
           continue;
         }
 
+      // FIXME: have to rethink if the backend needs to indicate support
+      // for just some of the policies
       if (policy->required_version > self->supported_version)
         {
           g_debug ("Ignoring policy %s because the impl does not support it",
                    policy_id);
           continue;
         }
+
+      // FIXME: check that the manifest allows it
+      // FIXME: get the values from the manifest
 
       if (g_ptr_array_find (policies, policy, NULL))
         {
@@ -133,7 +138,7 @@ adjust_policy (XdpPolicyPortal *self,
                SupportedPolicy *policy,
                gboolean         grant)
 {
-  // FIXME
+  // FIXME: if granted, we need to store the values in the permission db as well
   g_debug ("adjust policy %s to %s", policy->id, grant ? "grant" : "deny");
 }
 
@@ -290,6 +295,10 @@ handle_ask (XdpDbusPolicy         *object,
       {
         SupportedPolicy *policy = policies->pdata[i];
 
+        // FIXME: want to show the values as well
+        // need to construct the a string from the description and the
+        // values of the manifest
+
         g_variant_builder_add (&choices_builder, "{ssa(ss)s}",
                                policy->id,
                                policy->default_description,
@@ -313,6 +322,7 @@ handle_ask (XdpDbusPolicy         *object,
                               g_object_ref (self),
                               g_object_unref);
 
+      // FIXME: this really should be a specific impl, not access
       xdp_dbus_impl_access_call_access_dialog (self->access_impl,
         request->id,
         xdp_app_info_get_id (request->app_info),
