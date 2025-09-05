@@ -19,9 +19,10 @@
 
 #pragma once
 
-#include "xdp-utils.h"
-
 #include "xdp-app-info.h"
+
+#include "xdp-utils.h"
+#include "xdp-entitlements.h"
 
 typedef enum _XdpAppInfoFlags
 {
@@ -53,5 +54,7 @@ struct _XdpAppInfoClass
                                          GError     **error);
 
   GAppInfo * (*create_gappinfo) (XdpAppInfo *app_info);
+
+  XdpEntitlements * (*get_entitlements) (XdpAppInfo *app_info);
 };
 

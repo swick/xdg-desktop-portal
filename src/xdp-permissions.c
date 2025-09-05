@@ -26,6 +26,10 @@
 
 #include "xdp-permissions.h"
 
+#include "xdp-entitlements.h"
+
+#define ENTITLEMENT_TABLE "entitlements"
+
 static XdpDbusImplPermissionStore *permission_store = NULL;
 
 char **
@@ -184,4 +188,43 @@ XdpDbusImplPermissionStore *
 xdp_get_permission_store (void)
 {
   return permission_store;
+}
+
+static XdpEntitlements *
+get_granted_entitlements (XdpAppInfo  *app_info,
+                          GError     **error)
+{
+  g_autoptr(GVariant) granted_entitlements = NULL;
+  g_autoptr(GVariant) perms = NULL;
+  g_autoptr(GVariant) data = NULL;
+
+  if (!xdp_dbus_impl_permission_store_call_lookup_sync (xdp_get_permission_store (),
+                                                        ENTITLEMENT_TABLE,
+                                                        xdp_app_info_get_id (app_info),
+                                                        &perms,
+                                                        &granted_entitlements,
+                                                        NULL,
+                                                        error))
+    return NULL;
+
+  return xdp_entitlements_deserialize (granted_entitlements, error);
+}
+
+XdpEntitlements *
+xdp_permission_get_entitlements (XdpAppInfo *app_info)
+{
+  XdpEntitlements *declared;
+  g_autoptr(XdpEntitlements) granted = NULL;
+  g_autoptr(XdpEntitlements) effective = NULL;
+
+  declared = xdp_app_info_get_declared_entitlements (app_info);
+  if (!declared)
+    return NULL;
+
+  granted = get_granted_entitlements (app_info, NULL);
+  if (!granted)
+    return NULL;
+
+  effective = xdp_entitlements_intersect (granted, declared);
+  return g_steal_pointer (&effective);
 }

@@ -47,6 +47,8 @@
 #define FLATPAK_METADATA_KEY_SHARED "shared"
 #define FLATPAK_METADATA_CONTEXT_SHARED_NETWORK "network"
 #define FLATPAK_METADATA_GROUP_RUNTIME "Runtime"
+#define FLATPAK_METADATA_GROUP_USB_DEVICES "USB Devices"
+#define FLATPAK_METADATA_GROUP_ENTITLEMENTS "Policy entitlement"
 
 struct _XdpAppInfoFlatpak
 {
@@ -54,6 +56,7 @@ struct _XdpAppInfoFlatpak
 
   GKeyFile *flatpak_info;
   GPtrArray *queries;
+  XdpEntitlements *entitlements;
 };
 
 G_DEFINE_FINAL_TYPE (XdpAppInfoFlatpak, xdp_app_info_flatpak, XDP_TYPE_APP_INFO)
@@ -385,7 +388,7 @@ xdp_app_info_flaptak_get_usb_queries (XdpAppInfo *app_info)
       g_auto(GStrv) hidden_devices = NULL;
 
       enumerable_devices = g_key_file_get_string_list (app_info_flatpak->flatpak_info,
-                                                       "USB Devices",
+                                                       FLATPAK_METADATA_GROUP_USB_DEVICES,
                                                        "enumerable-devices",
                                                        NULL, NULL);
 
@@ -399,7 +402,7 @@ xdp_app_info_flaptak_get_usb_queries (XdpAppInfo *app_info)
         }
 
       hidden_devices = g_key_file_get_string_list (app_info_flatpak->flatpak_info,
-                                                   "USB Devices",
+                                                   FLATPAK_METADATA_GROUP_USB_DEVICES,
                                                    "hidden-devices",
                                                    NULL, NULL);
 
@@ -420,6 +423,40 @@ xdp_app_info_flaptak_get_usb_queries (XdpAppInfo *app_info)
     }
 
   return app_info_flatpak->queries;
+}
+
+static XdpEntitlements *
+xdp_app_info_flatpak_get_entitlements (XdpAppInfo *app_info)
+{
+  XdpAppInfoFlatpak *app_info_flatpak = XDP_APP_INFO_FLATPAK (app_info);
+  g_autoptr(XdpEntitlements) entitlements = NULL;
+  g_auto(GStrv) keys = NULL;
+
+  if (app_info_flatpak->entitlements)
+    return app_info_flatpak->entitlements;
+
+  entitlements = xdp_entitlements_new ();
+
+  keys = g_key_file_get_keys (app_info_flatpak->flatpak_info,
+                              FLATPAK_METADATA_GROUP_ENTITLEMENTS,
+                              NULL,
+                              NULL);
+
+  for (size_t i = 0; keys && keys[i] != NULL; i++)
+    {
+      g_auto(GStrv) values = NULL;
+
+      values = g_key_file_get_string_list (app_info_flatpak->flatpak_info,
+                                           FLATPAK_METADATA_GROUP_ENTITLEMENTS,
+                                           keys[i],
+                                           NULL,
+                                           NULL);
+
+      xdp_entitlements_add (entitlements, keys[i], values);
+    }
+
+  app_info_flatpak->entitlements = g_steal_pointer (&entitlements);
+  return app_info_flatpak->entitlements;
 }
 
 static gboolean
@@ -505,6 +542,8 @@ xdp_app_info_flatpak_class_init (XdpAppInfoFlatpakClass *klass)
     xdp_app_info_flatpak_remap_path;
   app_info_class->get_usb_queries =
     xdp_app_info_flaptak_get_usb_queries;
+  app_info_class->get_entitlements =
+    xdp_app_info_flatpak_get_entitlements;
   app_info_class->validate_autostart =
     xdp_app_info_flatpak_validate_autostart;
   app_info_class->validate_dynamic_launcher =

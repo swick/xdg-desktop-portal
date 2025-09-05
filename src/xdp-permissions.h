@@ -60,3 +60,5 @@ gboolean xdp_init_permission_store (GDBusConnection  *connection,
                                     GError          **err);
 
 XdpDbusImplPermissionStore *xdp_get_permission_store (void);
+
+XdpEntitlements * xdp_permission_get_entitlements (XdpAppInfo *app_info);

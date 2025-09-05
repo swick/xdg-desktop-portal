@@ -43,6 +43,8 @@ G_DECLARE_DERIVABLE_TYPE (XdpAppInfo,
                           XDP, APP_INFO,
                           GObject)
 
+typedef struct _XdpEntitlements XdpEntitlements;
+
 gboolean xdp_app_info_is_host (XdpAppInfo *app_info);
 
 const char * xdp_app_info_get_id (XdpAppInfo *app_info);
@@ -78,6 +80,8 @@ gboolean xdp_app_info_validate_dynamic_launcher (XdpAppInfo  *app_info,
                                                  GError     **error);
 
 const GPtrArray * xdp_app_info_get_usb_queries (XdpAppInfo *app_info);
+
+XdpEntitlements * xdp_app_info_get_declared_entitlements (XdpAppInfo *app_info);
 
 XdpAppInfo * xdp_invocation_ensure_app_info_sync (GDBusMethodInvocation  *invocation,
                                                   GCancellable           *cancellable,

@@ -73,6 +73,7 @@ xdp_utils_sources = enums_sources + files(
   'xdp-app-info-flatpak.c',
   'xdp-app-info-snap.c',
   'xdp-usb-query.c',
+  'xdp-entitlements.c',
 )
 
 if have_libsystemd
@@ -87,6 +88,7 @@ xdg_desktop_portal_sources = files(
   'clipboard.c',
   'dynamic-launcher.c',
   'email.c',
+  'entitlements.c',
   'file-chooser.c',
   'flatpak-instance.c',
   'gamemode.c',

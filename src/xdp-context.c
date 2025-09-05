@@ -45,6 +45,7 @@
 #include "notification.h"
 #include "open-uri.h"
 #include "xdp-permissions.h"
+#include "entitlements.h"
 #include "power-profile-monitor.h"
 #include "print.h"
 #include "proxy-resolver.h"
@@ -333,6 +334,10 @@ xdp_context_register (XdpContext       *context,
                                     camera_create (connection,
                                                    access_impl->dbus_name,
                                                    lockdown));
+
+      export_portal_implementation (connection,
+                                    portal_entitlements_create (connection,
+                                                                access_impl->dbus_name));
 
       tmp = xdp_portal_config_find_impl (portal_config, "org.freedesktop.impl.portal.Screenshot");
       if (tmp != NULL)
