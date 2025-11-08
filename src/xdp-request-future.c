@@ -298,6 +298,14 @@ xdp_request_future_emit_response (XdpRequestFuture             *request,
   if (!request->exported)
     return;
 
+  if (!results)
+    {
+      g_auto(GVariantBuilder) empty_results_builder =
+        G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE_VARDICT);
+
+      results = g_variant_builder_end (&empty_results_builder);
+    }
+
   xdp_dbus_request_emit_response (XDP_DBUS_REQUEST (request),
                                   response,
                                   results);

@@ -337,6 +337,9 @@ xdp_context_take_and_export_portal (XdpContext             *context,
   else
     g_warning ("Exporting portal failed: %s", error->message);
 
+  // FIXME: needs locking? probably not, we only use this on init?
+  // but we do async init now, so lookups can race?
+  // no, because async is always on the main thread
   g_hash_table_insert (context->exported_portals,
                        g_strdup (name),
                        g_steal_pointer (&skeleton));
@@ -367,8 +370,8 @@ on_peer_disconnect (const char *name,
 }
 
 static void
-xdp_context_register_portal_fiber (XdpContext   *context,
-                                   DexFiberFunc  portal_init_func)
+init_portal_in_fiber (XdpContext   *context,
+                      DexFiberFunc  portal_init_func)
 {
   g_autoptr(DexFuture) f = NULL;
   GCancellable *cancellable = context->cancellable;
@@ -444,7 +447,8 @@ xdp_context_register (XdpContext       *context,
                                           G_MAXINT);
     }
 
-  xdp_context_register_portal_fiber (context, init_email);
+  init_portal_in_fiber (context, init_email);
+  init_portal_in_fiber (context, init_wallpaper);
   init_memory_monitor (context);
   init_power_profile_monitor (context);
   init_network_monitor (context);
@@ -464,7 +468,6 @@ xdp_context_register (XdpContext       *context,
   init_camera (context);
   init_screenshot (context);
   init_background (context);
-  init_wallpaper (context);
   init_account (context);
   init_secret (context);
   init_global_shortcuts (context);

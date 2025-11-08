@@ -273,8 +273,6 @@ handle_compose_email (XdpDbusEmail          *object,
   {
     g_autoptr(XdpDbusImplEmailComposeEmailResult) result = NULL;
     XdgDesktopPortalResponseEnum response;
-    g_auto(GVariantBuilder) new_results =
-      G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE_VARDICT);
 
     result = dex_await_boxed (xdp_dbus_impl_email_call_compose_email_future (
         email->impl,
@@ -296,9 +294,7 @@ handle_compose_email (XdpDbusEmail          *object,
         response = XDG_DESKTOP_PORTAL_RESPONSE_OTHER;
       }
 
-    xdp_request_future_emit_response (request,
-                                      response,
-                                      g_variant_builder_end (&new_results));
+    xdp_request_future_emit_response (request, response, NULL);
   }
 
   return G_DBUS_METHOD_INVOCATION_HANDLED;
