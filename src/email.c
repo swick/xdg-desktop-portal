@@ -378,5 +378,12 @@ init_email (gpointer user_data)
   xdp_context_take_and_export_portal (context,
                                       G_DBUS_INTERFACE_SKELETON (g_steal_pointer (&email)),
                                       XDP_CONTEXT_EXPORT_FLAGS_RUN_IN_FIBER);
+
+  // FIXME: cancellation: must call dex_dbus_interface_skeleton_cancel at some point
+  // just decreasing the ref-count doesn't stop anything because it iternally holds
+  // a ref. So really, this should call g_dbus_interface_skeleton_unexport and
+  // dex_dbus_interface_skeleton_cancel.
+  // (should dex_dbus_interface_skeleton_cancel be part of unexport?)
+
   return dex_future_new_true ();
 }

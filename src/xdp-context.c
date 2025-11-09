@@ -449,6 +449,7 @@ xdp_context_register (XdpContext       *context,
 
   init_portal_in_fiber (context, init_email);
   init_portal_in_fiber (context, init_wallpaper);
+  init_portal_in_fiber (context, init_global_shortcuts);
   init_memory_monitor (context);
   init_power_profile_monitor (context);
   init_network_monitor (context);
@@ -470,7 +471,6 @@ xdp_context_register (XdpContext       *context,
   init_background (context);
   init_account (context);
   init_secret (context);
-  init_global_shortcuts (context);
   init_dynamic_launcher (context);
   init_screen_cast (context);
   init_remote_desktop (context);

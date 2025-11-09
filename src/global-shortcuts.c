@@ -62,8 +62,6 @@ G_DEFINE_FINAL_TYPE_WITH_CODE (XdpGlobalShortcuts,
 struct _XdpGlobalShortcutsSession
 {
   XdpSession parent;
-
-  gboolean closed;
 };
 
 #define XDP_TYPE_GLOBAL_SHORTCUTS_SESSION (xdp_global_shortcuts_session_get_type ())
@@ -86,12 +84,6 @@ xdp_global_shortcuts_session_close (XdpSession *session)
 }
 
 static void
-xdp_global_shortcuts_session_finalize (GObject *object)
-{
-  G_OBJECT_CLASS (xdp_global_shortcuts_session_parent_class)->finalize (object);
-}
-
-static void
 xdp_global_shortcuts_session_init (XdpGlobalShortcutsSession *global_shortcuts_session)
 {
 }
@@ -101,9 +93,6 @@ xdp_global_shortcuts_session_class_init (XdpGlobalShortcutsSessionClass *klass)
 {
   GObjectClass *object_class;
   XdpSessionClass *session_class;
-
-  object_class = G_OBJECT_CLASS (klass);
-  object_class->finalize = xdp_global_shortcuts_session_finalize;
 
   session_class = (XdpSessionClass *)klass;
   session_class->close = xdp_global_shortcuts_session_close;
@@ -799,9 +788,10 @@ xdp_global_shortcuts_new (XdpDbusImplGlobalShortcuts *impl)
   return global_shortcuts;
 }
 
-void
-init_global_shortcuts (XdpContext *context)
+DexFuture *
+init_global_shortcuts (gpointer user_data)
 {
+  XdpContext *context = XDP_CONTEXT (user_data);
   g_autoptr(XdpGlobalShortcuts) global_shortcuts = NULL;
   GDBusConnection *connection = xdp_context_get_connection (context);
   XdpPortalConfig *config = xdp_context_get_config (context);
@@ -811,22 +801,25 @@ init_global_shortcuts (XdpContext *context)
 
   impl_config = xdp_portal_config_find (config, GLOBAL_SHORTCUTS_DBUS_IMPL_IFACE);
   if (impl_config == NULL)
-    return;
+    return dex_future_new_true ();
 
-  impl = xdp_dbus_impl_global_shortcuts_proxy_new_sync (connection,
-                                                        G_DBUS_PROXY_FLAGS_NONE,
-                                                        impl_config->dbus_name,
-                                                        "/org/freedesktop/portal/desktop",
-                                                        NULL, &error);
+  impl = dex_await_object (xdp_dbus_impl_global_shortcuts_proxy_new_future (
+      connection,
+      G_DBUS_PROXY_FLAGS_NONE,
+      impl_config->dbus_name,
+      "/org/freedesktop/portal/desktop"),
+    &error);
+
   if (impl == NULL)
     {
       g_warning ("Failed to create global_shortcuts proxy: %s", error->message);
-      return;
+      return dex_future_new_false ();
     }
 
   global_shortcuts = xdp_global_shortcuts_new (impl);
 
   xdp_context_take_and_export_portal (context,
                                       G_DBUS_INTERFACE_SKELETON (g_steal_pointer (&global_shortcuts)),
-                                      XDP_CONTEXT_EXPORT_FLAGS_RUN_IN_THREAD);
+                                      XDP_CONTEXT_EXPORT_FLAGS_RUN_IN_FIBER);
+  return dex_future_new_true ();
 }
