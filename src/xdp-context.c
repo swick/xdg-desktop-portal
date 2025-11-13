@@ -470,7 +470,7 @@ xdp_context_register (XdpContext       *context,
   init_screenshot (context);
   init_background (context);
   init_account (context);
-  init_secret (context);
+  init_secret (context, context->cancellable);
   init_dynamic_launcher (context);
   init_screen_cast (context);
   init_remote_desktop (context);

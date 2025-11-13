@@ -62,6 +62,8 @@ G_DEFINE_FINAL_TYPE_WITH_CODE (XdpGlobalShortcuts,
 struct _XdpGlobalShortcutsSession
 {
   XdpSession parent;
+
+  gboolean closed;
 };
 
 #define XDP_TYPE_GLOBAL_SHORTCUTS_SESSION (xdp_global_shortcuts_session_get_type ())
@@ -84,6 +86,12 @@ xdp_global_shortcuts_session_close (XdpSession *session)
 }
 
 static void
+xdp_global_shortcuts_session_finalize (GObject *object)
+{
+  G_OBJECT_CLASS (xdp_global_shortcuts_session_parent_class)->finalize (object);
+}
+
+static void
 xdp_global_shortcuts_session_init (XdpGlobalShortcutsSession *global_shortcuts_session)
 {
 }
@@ -93,6 +101,9 @@ xdp_global_shortcuts_session_class_init (XdpGlobalShortcutsSessionClass *klass)
 {
   GObjectClass *object_class;
   XdpSessionClass *session_class;
+
+  object_class = G_OBJECT_CLASS (klass);
+  object_class->finalize = xdp_global_shortcuts_session_finalize;
 
   session_class = (XdpSessionClass *)klass;
   session_class->close = xdp_global_shortcuts_session_close;

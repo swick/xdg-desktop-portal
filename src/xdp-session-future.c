@@ -1,0 +1,278 @@
+/*
+ * Copyright © 2025 Red Hat, Inc
+ *
+ * SPDX-License-Identifier: LGPL-2.1-or-later
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+#include "xdp-app-info.h"
+#include "xdp-impl-dbus.h"
+#include "xdp-utils.h"
+
+#include "xdp-session-future.h"
+
+typedef struct _XdpSessionFuture
+{
+  XdpDbusSessionSkeleton parent_instance;
+
+  XdpAppInfo *app_info;
+  XdpDbusImplSession *impl_session;
+  GDBusInterfaceSkeleton *skeleton;
+  char *id;
+  gboolean exported;
+} XdpSessionFuture;
+
+static void xdp_session_skeleton_iface_init (XdpDbusSessionIface *iface);
+
+G_DEFINE_TYPE_WITH_CODE (XdpSessionFuture,
+                         xdp_session_future,
+                         XDP_DBUS_TYPE_SESSION_SKELETON,
+                         G_IMPLEMENT_INTERFACE (XDP_DBUS_TYPE_SESSION,
+                                                xdp_session_skeleton_iface_init))
+
+static gboolean
+xdp_session_future_handle_close (XdpDbusSession        *object,
+                                 GDBusMethodInvocation *invocation)
+{
+  XdpSessionFuture *session = XDP_SESSION_FUTURE (object);
+  g_autoptr(GError) error = NULL;
+
+  if (!session->exported)
+    {
+      xdp_dbus_session_complete_close (XDP_DBUS_SESSION (session), invocation);
+      return G_DBUS_METHOD_INVOCATION_HANDLED;
+    }
+
+  g_dbus_interface_skeleton_unexport (G_DBUS_INTERFACE_SKELETON (session));
+  session->exported = FALSE;
+
+  dex_await (xdp_dbus_impl_session_call_close_future (session->impl_session),
+             &error);
+  if (error)
+    {
+      g_dbus_method_invocation_return_gerror (invocation, error);
+      return G_DBUS_METHOD_INVOCATION_HANDLED;
+    }
+
+  xdp_dbus_session_complete_close (XDP_DBUS_SESSION (object), invocation);
+  return G_DBUS_METHOD_INVOCATION_HANDLED;
+}
+
+static void
+xdp_session_skeleton_iface_init (XdpDbusSessionIface *iface)
+{
+  iface->handle_close = xdp_session_future_handle_close;
+}
+
+static void
+xdp_session_future_dispose (GObject *object)
+{
+  XdpSessionFuture *session = XDP_SESSION_FUTURE (object);
+
+  if (session->exported)
+    {
+      xdp_dbus_impl_session_call_close (session->impl_session, NULL, NULL, NULL),
+
+      g_dbus_interface_skeleton_unexport (G_DBUS_INTERFACE_SKELETON (session));
+      session->exported = FALSE;
+    }
+
+  g_clear_object (&session->app_info);
+  g_clear_object (&session->impl_session);
+  g_clear_object (&session->skeleton);
+  g_clear_pointer (&session->id, g_free);
+
+  G_OBJECT_CLASS (xdp_session_future_parent_class)->dispose (object);
+}
+
+static void
+xdp_session_future_init (XdpSessionFuture *session)
+{
+}
+
+static void
+xdp_session_future_class_init (XdpSessionFutureClass *klass)
+{
+  GObjectClass *object_class = G_OBJECT_CLASS (klass);
+
+  object_class->dispose = xdp_session_future_dispose;
+}
+
+static void
+on_peer_disconnect (XdpContext *context,
+                    const char *peer,
+                    gpointer    user_data)
+{
+  XdpSessionFuture *session = XDP_SESSION_FUTURE (user_data);
+
+  if (g_strcmp0 (xdp_app_info_get_sender (session->app_info), peer) != 0)
+    return;
+
+  if (!session->exported)
+    return;
+
+  xdp_dbus_impl_session_call_close (session->impl_session, NULL, NULL, NULL),
+
+  g_dbus_interface_skeleton_unexport (G_DBUS_INTERFACE_SKELETON (session));
+  session->exported = FALSE;
+}
+
+static void
+on_impl_closed (XdpDbusImplSession *object, GObject *data)
+{
+  XdpSessionFuture *session = XDP_SESSION_FUTURE (data);
+
+  if (!session->exported)
+    return;
+
+  xdp_dbus_impl_session_call_close (session->impl_session, NULL, NULL, NULL),
+
+  g_dbus_interface_skeleton_unexport (G_DBUS_INTERFACE_SKELETON (session));
+  session->exported = FALSE;
+}
+
+static gboolean
+session_authorize_callback (GDBusInterfaceSkeleton *interface,
+                            GDBusMethodInvocation  *invocation,
+                            gpointer                user_data)
+{
+  XdpSessionFuture *session = XDP_SESSION_FUTURE (user_data);
+  const char *sender = g_dbus_method_invocation_get_sender (invocation);
+
+  if (g_strcmp0 (sender, xdp_app_info_get_sender (session->app_info)) != 0)
+    {
+      g_dbus_method_invocation_return_error (invocation,
+                                             G_DBUS_ERROR,
+                                             G_DBUS_ERROR_ACCESS_DENIED,
+                                             "Portal operation not allowed, Unmatched caller");
+      return FALSE;
+    }
+
+  return TRUE;
+}
+
+typedef struct _SessionImplProxyCreateData {
+  XdpContext *context;
+  XdpAppInfo *app_info;
+  GDBusInterfaceSkeleton *skeleton;
+  char *id;
+} SessionImplProxyCreateData;
+
+static void
+session_impl_proxy_create_data_free (SessionImplProxyCreateData *data)
+{
+  g_clear_object (&data->context);
+  g_clear_object (&data->app_info);
+  g_clear_object (&data->skeleton);
+  g_clear_pointer (&data->id, g_free);
+  free (data);
+}
+
+static DexFuture *
+on_impl_session_proxy_created (DexFuture *future,
+                               gpointer   user_data)
+{
+  SessionImplProxyCreateData *data = user_data;
+  g_autoptr(XdpSessionFuture) session = NULL;
+  g_autoptr(XdpDbusImplSession) impl_session = NULL;
+  g_autoptr(GError) error = NULL;
+
+  impl_session = dex_await_object (future, NULL);
+  g_assert (impl_session);
+
+  session = g_object_new (XDP_TYPE_SESSION_FUTURE, NULL);
+  session->app_info = g_steal_pointer (&data->app_info);
+  session->impl_session = g_steal_pointer (&impl_session);
+  session->skeleton = g_steal_pointer (&data->skeleton);
+  session->id = g_steal_pointer (&data->id);
+  session->exported = TRUE;
+
+  g_signal_connect_object (data->context, "peer-disconnect",
+                           G_CALLBACK (on_peer_disconnect),
+                           session,
+                           G_CONNECT_DEFAULT);
+
+  g_signal_connect_object (session->impl_session, "closed",
+                           G_CALLBACK (on_impl_closed),
+                           session,
+                           G_CONNECT_DEFAULT);
+
+  dex_dbus_interface_skeleton_set_flags (DEX_DBUS_INTERFACE_SKELETON (session),
+                                         DEX_DBUS_INTERFACE_SKELETON_FLAGS_HANDLE_METHOD_INVOCATIONS_IN_FIBER);
+  g_signal_connect (session, "g-authorize-method",
+                    G_CALLBACK (session_authorize_callback),
+                    session);
+
+  if (!g_dbus_interface_skeleton_export (G_DBUS_INTERFACE_SKELETON (session),
+                                         g_dbus_interface_skeleton_get_connection (session->skeleton),
+                                         session->id,
+                                         &error))
+      return dex_future_new_for_error (g_steal_pointer (&error));
+
+  return dex_future_new_for_object (session);
+}
+
+DexFuture *
+xdp_session_future_new (XdpContext             *context,
+                        XdpAppInfo             *app_info,
+                        GDBusInterfaceSkeleton *skeleton,
+                        GDBusProxy             *proxy_impl,
+                        GVariant               *arg_options)
+{
+  g_autoptr(DexFuture) future = NULL;
+  SessionImplProxyCreateData *data;
+  const char *token = NULL;
+  g_autofree char *sender = NULL;
+  g_autofree char *id = NULL;
+
+  g_variant_lookup (arg_options, "session_handle_token", "&s", &token);
+  token = token ? token : "t";
+  if (!xdp_is_valid_token (token))
+    {
+      return dex_future_new_for_error (g_error_new (XDG_DESKTOP_PORTAL_ERROR,
+                                                    XDG_DESKTOP_PORTAL_ERROR_INVALID_ARGUMENT,
+                                                    "Invalid token: %s", token));
+    }
+
+  sender = g_strdup (xdp_app_info_get_sender (app_info) + 1);
+  for (size_t i = 0; sender[i]; i++)
+    {
+      if (sender[i] == '.')
+        sender[i] = '_';
+    }
+
+  id = g_strdup_printf (DESKTOP_DBUS_PATH "/session/%s/%s", sender, token);
+
+  // FIXME: register id with context, ensure unique
+
+  future = xdp_dbus_impl_session_proxy_new_future (
+    g_dbus_proxy_get_connection (proxy_impl),
+    G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES,
+    g_dbus_proxy_get_name (proxy_impl),
+    id);
+
+  data = g_new0 (SessionImplProxyCreateData, 1);
+  data->context = g_object_ref (context);
+  data->app_info = g_object_ref (app_info);
+  data->skeleton = g_object_ref (skeleton);
+  data->id = g_steal_pointer (&id);
+
+  future = dex_future_then (future,
+                            on_impl_session_proxy_created,
+                            g_steal_pointer (&data),
+                            (GDestroyNotify) session_impl_proxy_create_data_free);
+
+  return g_steal_pointer (&future);
+}
