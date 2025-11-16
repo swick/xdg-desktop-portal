@@ -281,24 +281,30 @@ handle_set_wallpaper_file (XdpDbusWallpaper      *object,
   XdpWallpaper *wallpaper = XDP_WALLPAPER (object);
   g_autoptr(XdpRequestFuture) request = NULL;
   XdpAppInfo *app_info = xdp_invocation_get_app_info (invocation);
-  g_auto(GVariantBuilder) opt_builder =
-    G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE_VARDICT);
+  g_autoptr(GVariant) options = NULL;
   gboolean permission_granted;
   g_autofd int fd = -1;
   g_autofree char *uri = NULL;
   g_autoptr(GError) error = NULL;
 
-  if (!xdp_filter_options (arg_options,
-                           &opt_builder,
-                           wallpaper_options,
-                           G_N_ELEMENTS (wallpaper_options),
-                           NULL,
-                           &error))
-    {
-      g_dbus_method_invocation_return_gerror (g_steal_pointer (&invocation),
-                                              error);
-      return G_DBUS_METHOD_INVOCATION_HANDLED;
-    }
+  {
+    g_auto(GVariantBuilder) opt_builder =
+      G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE_VARDICT);
+
+    if (!xdp_filter_options (arg_options,
+                             &opt_builder,
+                             wallpaper_options,
+                             G_N_ELEMENTS (wallpaper_options),
+                             NULL,
+                             &error))
+      {
+        g_dbus_method_invocation_return_gerror (g_steal_pointer (&invocation),
+                                                error);
+        return G_DBUS_METHOD_INVOCATION_HANDLED;
+      }
+
+    options = g_variant_ref_sink (g_variant_builder_end (&options_builder));
+  }
 
   {
     int fd_id;
@@ -326,7 +332,7 @@ handle_set_wallpaper_file (XdpDbusWallpaper      *object,
                                                       app_info,
                                                       G_DBUS_INTERFACE_SKELETON (object),
                                                       G_DBUS_PROXY (wallpaper->impl),
-                                                      arg_options),
+                                                      options),
                               &error);
   if (!request)
     {
@@ -343,7 +349,7 @@ handle_set_wallpaper_file (XdpDbusWallpaper      *object,
   if (!get_permission (wallpaper,
                        request,
                        app_info,
-                       arg_options,
+                       options,
                        arg_parent_window,
                        &permission_granted,
                        &error))
@@ -388,7 +394,7 @@ handle_set_wallpaper_file (XdpDbusWallpaper      *object,
         xdp_app_info_get_id (app_info),
         arg_parent_window,
         uri,
-        g_variant_builder_end (&opt_builder)),
+        options),
       &error);
 
     if (result)

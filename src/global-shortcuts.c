@@ -59,179 +59,26 @@ G_DEFINE_FINAL_TYPE_WITH_CODE (XdpGlobalShortcuts,
                                G_IMPLEMENT_INTERFACE (XDP_DBUS_TYPE_GLOBAL_SHORTCUTS,
                                                       xdp_global_shortcuts_iface_init))
 
-struct _XdpGlobalShortcutsSession
-{
-  XdpSession parent;
 
-  gboolean closed;
-};
-
-#define XDP_TYPE_GLOBAL_SHORTCUTS_SESSION (xdp_global_shortcuts_session_get_type ())
-G_DECLARE_FINAL_TYPE (XdpGlobalShortcutsSession,
-                      xdp_global_shortcuts_session,
-                      XDP, GLOBAL_SHORTCUTS_SESSION,
-                      XdpSession)
-
-G_DEFINE_FINAL_TYPE (XdpGlobalShortcutsSession,
-                     xdp_global_shortcuts_session,
-                     XDP_TYPE_SESSION)
-
-static void
-xdp_global_shortcuts_session_close (XdpSession *session)
-{
-  XdpGlobalShortcutsSession *global_shortcuts_session =
-    XDP_GLOBAL_SHORTCUTS_SESSION (session);
-
-  global_shortcuts_session->closed = TRUE;
-}
-
-static void
-xdp_global_shortcuts_session_finalize (GObject *object)
-{
-  G_OBJECT_CLASS (xdp_global_shortcuts_session_parent_class)->finalize (object);
-}
-
-static void
-xdp_global_shortcuts_session_init (XdpGlobalShortcutsSession *global_shortcuts_session)
-{
-}
-
-static void
-xdp_global_shortcuts_session_class_init (XdpGlobalShortcutsSessionClass *klass)
-{
-  GObjectClass *object_class;
-  XdpSessionClass *session_class;
-
-  object_class = G_OBJECT_CLASS (klass);
-  object_class->finalize = xdp_global_shortcuts_session_finalize;
-
-  session_class = (XdpSessionClass *)klass;
-  session_class->close = xdp_global_shortcuts_session_close;
-}
-
-static XdpGlobalShortcutsSession *
-xdp_global_shortcuts_session_new (XdpGlobalShortcuts  *global_shortcuts,
-                                  GVariant            *options,
-                                  XdpRequest          *request,
-                                  GError             **error)
-{
-  XdpSession *session;
-  GDBusInterfaceSkeleton *interface_skeleton =
-    G_DBUS_INTERFACE_SKELETON (request);
-  const char *session_token;
-  GDBusConnection *connection =
-    g_dbus_interface_skeleton_get_connection (interface_skeleton);
-  GDBusConnection *impl_connection =
-    g_dbus_proxy_get_connection (G_DBUS_PROXY (global_shortcuts->impl));
-  const char *impl_dbus_name =
-    g_dbus_proxy_get_name (G_DBUS_PROXY (global_shortcuts->impl));
-
-  session_token = lookup_session_token (options);
-  session = g_initable_new (XDP_TYPE_GLOBAL_SHORTCUTS_SESSION, NULL, error,
-                            "sender", request->sender,
-                            "app-id", xdp_app_info_get_id (request->app_info),
-                            "token", session_token,
-                            "connection", connection,
-                            "impl-connection", impl_connection,
-                            "impl-dbus-name", impl_dbus_name,
-                            NULL);
-
-  if (session)
-    g_debug ("global shortcuts session owned by '%s' created", session->sender);
-
-  return XDP_GLOBAL_SHORTCUTS_SESSION (session);
-}
-
-static void
-session_created_cb (GObject *source_object,
-                    GAsyncResult *res,
-                    gpointer data)
-{
-  XdpDbusImplGlobalShortcuts *impl = XDP_DBUS_IMPL_GLOBAL_SHORTCUTS (source_object);
-  g_autoptr(XdpRequest) request = data;
-  XdpSession *session;
-  guint response = 2;
-  g_autoptr (GVariant) results = NULL;
-  gboolean should_close_session;
-  g_auto(GVariantBuilder) results_builder =
-    G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE_VARDICT);
-  g_autoptr(GError) error = NULL;
-
-  REQUEST_AUTOLOCK (request);
-
-  session = g_object_get_qdata (G_OBJECT (request), quark_request_session);
-  SESSION_AUTOLOCK_UNREF (g_object_ref (session));
-  g_object_set_qdata (G_OBJECT (request), quark_request_session, NULL);
-
-  if (!xdp_dbus_impl_global_shortcuts_call_create_session_finish (impl,
-                                                                  &response,
-                                                                  &results,
-                                                                  res,
-                                                                  &error))
-    {
-      g_dbus_error_strip_remote_error (error);
-      g_warning ("A backend call failed: %s", error->message);
-      should_close_session = TRUE;
-      goto out;
-    }
-
-  if (request->exported && response == 0)
-    {
-      if (!xdp_session_export (session, &error))
-        {
-          g_warning ("Failed to export session: %s", error->message);
-          response = 2;
-          should_close_session = TRUE;
-          goto out;
-        }
-
-      should_close_session = FALSE;
-      xdp_session_register (session);
-    }
-  else
-    {
-      should_close_session = TRUE;
-    }
-
-  g_variant_builder_add (&results_builder, "{sv}",
-                         "session_handle", g_variant_new ("s", session->id));
-
-out:
-  if (request->exported)
-    {
-      xdp_dbus_request_emit_response (XDP_DBUS_REQUEST (request),
-                                      response,
-                                      g_variant_builder_end (&results_builder));
-      xdp_request_unexport (request);
-    }
-
-  if (should_close_session)
-    xdp_session_close (session, FALSE);
-}
-
-static XdpOptionKey xdp_global_shortcuts_create_session_options[] = {
+static XdpOptionKey create_session_options[] = {
   { "handle_token", G_VARIANT_TYPE_STRING, NULL },
   { "session_handle_token", G_VARIANT_TYPE_STRING, NULL },
 };
 
 static gboolean
 handle_create_session (XdpDbusGlobalShortcuts *object,
-                       GDBusMethodInvocation *invocation,
-                       GVariant *arg_options)
+                       GDBusMethodInvocation  *invocation,
+                       GVariant               *arg_options)
 {
   XdpGlobalShortcuts *global_shortcuts = XDP_GLOBAL_SHORTCUTS (object);
-  XdpRequest *request = xdp_request_from_invocation (invocation);
-  g_autoptr(GError) error = NULL;
-  g_autoptr(XdpDbusImplRequest) impl_request = NULL;
-  g_auto(GVariantBuilder) options_builder =
-    G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE_VARDICT);
+  XdpAppInfo *app_info = xdp_invocation_get_app_info (invocation);
+  g_autoptr(XdpRequestFuture) request = NULL;
+  g_autoptr(XdpSessionFuture) session = NULL;
   g_autoptr(GVariant) options = NULL;
-  XdpSession *session;
-
-  REQUEST_AUTOLOCK (request);
+  g_autoptr(GError) error = NULL;
 
   /* shortcuts really need to be scoped to a specific app */
-  if (g_strcmp0 (xdp_app_info_get_id (request->app_info), "") == 0)
+  if (g_strcmp0 (xdp_app_info_get_id (app_info), "") == 0)
     {
       g_dbus_method_invocation_return_error (invocation,
                                              XDG_DESKTOP_PORTAL_ERROR,
@@ -240,57 +87,88 @@ handle_create_session (XdpDbusGlobalShortcuts *object,
       return G_DBUS_METHOD_INVOCATION_HANDLED;
     }
 
-  if (!xdp_filter_options (arg_options, &options_builder,
-                           xdp_global_shortcuts_create_session_options,
-                           G_N_ELEMENTS (xdp_global_shortcuts_create_session_options),
-                           NULL, &error))
+  {
+    g_auto(GVariantBuilder) options_builder =
+      G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE_VARDICT);
+
+    if (!xdp_filter_options (arg_options,
+                             &options_builder,
+                             create_session_options,
+                             G_N_ELEMENTS (create_session_options),
+                             NULL,
+                             &error))
+      {
+        g_dbus_method_invocation_return_gerror (invocation, error);
+        return G_DBUS_METHOD_INVOCATION_HANDLED;
+      }
+
+    options = g_variant_ref_sink (g_variant_builder_end (&options_builder));
+  }
+
+  request = dex_await_object (xdp_request_future_new (global_shortcuts->context,
+                                                      app_info,
+                                                      G_DBUS_INTERFACE_SKELETON (object),
+                                                      G_DBUS_PROXY (global_shortcuts->impl),
+                                                      options),
+                              &error);
+  if (!request)
     {
-      g_dbus_method_invocation_return_gerror (invocation, error);
+      g_dbus_method_invocation_return_gerror (g_steal_pointer (&invocation),
+                                              error);
       return G_DBUS_METHOD_INVOCATION_HANDLED;
     }
 
-  options = g_variant_ref_sink (g_variant_builder_end (&options_builder));
-  impl_request = xdp_dbus_impl_request_proxy_new_sync (
-    g_dbus_proxy_get_connection (G_DBUS_PROXY (global_shortcuts->impl)),
-    G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES,
-    g_dbus_proxy_get_name (G_DBUS_PROXY (global_shortcuts->impl)),
-    request->id,
-    NULL, &error);
-
-  if (!impl_request)
-    {
-      g_dbus_method_invocation_return_gerror (invocation, error);
-      return G_DBUS_METHOD_INVOCATION_HANDLED;
-    }
-
-  xdp_request_set_impl_request (request, impl_request);
-  xdp_request_export (request, g_dbus_method_invocation_get_connection (invocation));
-
-  session = XDP_SESSION (xdp_global_shortcuts_session_new (global_shortcuts,
-                                                           options,
-                                                           request,
-                                                           &error));
+  session = dex_await_object (xdp_session_future_new (global_shortcuts->context,
+                                                      app_info,
+                                                      G_DBUS_INTERFACE_SKELETON (object),
+                                                      G_DBUS_PROXY (global_shortcuts->impl),
+                                                      options),
+                              &error);
   if (!session)
     {
-      g_dbus_method_invocation_return_gerror (invocation, error);
+      g_dbus_method_invocation_return_gerror (g_steal_pointer (&invocation),
+                                              error);
       return G_DBUS_METHOD_INVOCATION_HANDLED;
     }
 
-  g_object_set_qdata_full (G_OBJECT (request),
-                           quark_request_session,
-                           g_object_ref (session),
-                           g_object_unref);
+  xdp_dbus_global_shortcuts_complete_create_session (object,
+                                                     g_steal_pointer (&invocation),
+                                                     xdp_request_future_get_object_path (request));
 
-  xdp_dbus_impl_global_shortcuts_call_create_session (global_shortcuts->impl,
-                                                      request->id,
-                                                      session->id,
-                                                      xdp_app_info_get_id (request->app_info),
-                                                      options,
-                                                      NULL,
-                                                      session_created_cb,
-                                                      g_object_ref (request));
+  {
+    g_autoptr(XdpDbusImplGlobalShortcutsCreateSessionResult) result = NULL;
+    XdgDesktopPortalResponseEnum response;
+    g_auto(GVariantBuilder) results_builder =
+      G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE_VARDICT);
 
-  xdp_dbus_global_shortcuts_complete_create_session (object, invocation, request->id);
+    result = dex_await_boxed (xdp_dbus_impl_global_shortcuts_call_create_session_future (
+        global_shortcuts->impl,
+        xdp_request_future_get_object_path (request),
+        xdp_app_info_get_id (app_info),
+        options),
+      &error);
+
+    if (result)
+      {
+        response = result->response;
+        g_variant_builder_add (&results_builder, "{sv}",
+                               "session_handle",
+                               g_variant_new ("s", session->id));
+
+        // FIXME persist session somehow
+      }
+    else
+      {
+        g_dbus_error_strip_remote_error (error);
+        g_warning ("Backend call failed: %s", error->message);
+
+        response = XDG_DESKTOP_PORTAL_RESPONSE_OTHER;
+      }
+
+    xdp_request_future_emit_response (request,
+                                      response,
+                                      g_variant_builder_end (&results_builder));
+  }
 
   return G_DBUS_METHOD_INVOCATION_HANDLED;
 }
@@ -831,6 +709,6 @@ init_global_shortcuts (gpointer user_data)
 
   xdp_context_take_and_export_portal (context,
                                       G_DBUS_INTERFACE_SKELETON (g_steal_pointer (&global_shortcuts)),
-                                      XDP_CONTEXT_EXPORT_FLAGS_RUN_IN_THREAD);
+                                      XDP_CONTEXT_EXPORT_FLAGS_RUN_IN_FIBER);
   return dex_future_new_true ();
 }
