@@ -48,28 +48,16 @@ xdp_request_future_on_signal_response (XdpDbusRequest *object,
                                        GVariant       *arg_results)
 {
   XdpRequestFuture *request = XDP_REQUEST_FUTURE (object);
-  GDBusInterfaceSkeleton *skeleton = G_DBUS_INTERFACE_SKELETON (object);
-  g_autoptr(GVariant) signal_variant = NULL;
-  g_autolist(GDBusConnection) connections = NULL;
 
-  signal_variant = g_variant_ref_sink (g_variant_new ("(u@a{sv})",
-                                                      arg_response,
-                                                      arg_results));
-
-  connections = g_dbus_interface_skeleton_get_connections (skeleton);
-
-  for (GList *l = connections; l != NULL; l = l->next)
-    {
-      GDBusConnection *connection = l->data;
-
-      g_dbus_connection_emit_signal (connection,
-                                     xdp_app_info_get_sender (request->app_info),
-                                     g_dbus_interface_skeleton_get_object_path (skeleton),
-                                     DESKTOP_DBUS_IFACE ".Request",
-                                     "Response",
-                                     signal_variant,
-                                     NULL);
-    }
+  g_dbus_connection_emit_signal (g_dbus_interface_skeleton_get_connection (request->skeleton),
+                                 xdp_app_info_get_sender (request->app_info),
+                                 request->id,
+                                 DESKTOP_DBUS_IFACE ".Request",
+                                 "Response",
+                                 g_variant_new ("(u@a{sv})",
+                                                arg_response,
+                                                arg_results),
+                                 NULL);
 }
 
 static gboolean

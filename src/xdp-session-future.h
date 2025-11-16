@@ -33,3 +33,7 @@ DexFuture * xdp_session_future_new (XdpContext             *context,
                                     GDBusInterfaceSkeleton *skeleton,
                                     GDBusProxy             *proxy_impl,
                                     GVariant               *arg_options);
+
+gboolean xdp_session_future_is_closed (XdpSessionFuture *session);
+
+const char * xdp_session_future_get_object_path (XdpSessionFuture *session);

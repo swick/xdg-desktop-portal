@@ -42,6 +42,21 @@ G_DEFINE_TYPE_WITH_CODE (XdpSessionFuture,
                          G_IMPLEMENT_INTERFACE (XDP_DBUS_TYPE_SESSION,
                                                 xdp_session_skeleton_iface_init))
 
+static void
+xdp_session_future_on_signal_closed (XdpDbusSession *object,
+                                     GVariant       *arg_details)
+{
+  XdpSessionFuture *session = XDP_SESSION_FUTURE (object);
+
+  g_dbus_connection_emit_signal (g_dbus_interface_skeleton_get_connection (session->skeleton),
+                                 xdp_app_info_get_sender (session->app_info),
+                                 session->id,
+                                 DESKTOP_DBUS_IFACE ".Session",
+                                 "Closed",
+                                 g_variant_new ("(@a{sv})", arg_details),
+                                 NULL);
+}
+
 static gboolean
 xdp_session_future_handle_close (XdpDbusSession        *object,
                                  GDBusMethodInvocation *invocation)
@@ -74,6 +89,7 @@ static void
 xdp_session_skeleton_iface_init (XdpDbusSessionIface *iface)
 {
   iface->handle_close = xdp_session_future_handle_close;
+  iface->closed = xdp_session_future_on_signal_closed;
 }
 
 static void
@@ -130,14 +146,18 @@ on_peer_disconnect (XdpContext *context,
 }
 
 static void
-on_impl_closed (XdpDbusImplSession *object, GObject *data)
+on_impl_closed (XdpDbusImplSession *object,
+                gpointer            user_data)
 {
-  XdpSessionFuture *session = XDP_SESSION_FUTURE (data);
+  XdpSessionFuture *session = XDP_SESSION_FUTURE (user_data);
+  g_auto(GVariantBuilder) details_builder =
+    G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE_VARDICT);
 
   if (!session->exported)
     return;
 
-  xdp_dbus_impl_session_call_close (session->impl_session, NULL, NULL, NULL),
+  xdp_dbus_session_emit_closed (XDP_DBUS_SESSION (session),
+                                g_variant_builder_end (&details_builder));
 
   g_dbus_interface_skeleton_unexport (G_DBUS_INTERFACE_SKELETON (session));
   session->exported = FALSE;
@@ -275,4 +295,16 @@ xdp_session_future_new (XdpContext             *context,
                             (GDestroyNotify) session_impl_proxy_create_data_free);
 
   return g_steal_pointer (&future);
+}
+
+gboolean
+xdp_session_future_is_closed (XdpSessionFuture *session)
+{
+  return !session->exported;
+}
+
+const char *
+xdp_session_future_get_object_path (XdpSessionFuture *session)
+{
+  return session->id;
 }
