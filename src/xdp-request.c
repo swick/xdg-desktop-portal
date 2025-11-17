@@ -21,6 +21,8 @@
  *       Matthias Clasen <mclasen@redhat.com>
  */
 
+#include "config.h"
+
 #include <string.h>
 
 #include "xdp-context.h"

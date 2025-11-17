@@ -17,6 +17,8 @@
  * License along with this library. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "config.h"
+
 #include "xdp-app-info.h"
 #include "xdp-context.h"
 #include "xdp-impl-dbus.h"
