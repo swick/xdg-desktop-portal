@@ -1,8 +1,5 @@
-context/request: ensure unique handle
-cancel fibers of skeletons
-figure out how context outlives everything
-sessions on XdpAppInfo
-session future
-port GlobalShortcuts
+shutdown:
+- cancel fibers of skeletons
+- make sure context outlives everything, and has no internals refs
 redo XdpPermissions file; move to context
 AppInfoRegistry rework (use messages?); make future variant
