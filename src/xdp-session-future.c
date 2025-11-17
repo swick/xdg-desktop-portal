@@ -23,6 +23,14 @@
 
 #include "xdp-session-future.h"
 
+enum
+{
+  SESSION_CLOSED,
+  N_SIGNALS,
+};
+
+static guint signals[N_SIGNALS] = { 0 };
+
 typedef struct _XdpSessionFuture
 {
   XdpDbusSessionSkeleton parent_instance;
@@ -41,6 +49,12 @@ G_DEFINE_TYPE_WITH_CODE (XdpSessionFuture,
                          XDP_DBUS_TYPE_SESSION_SKELETON,
                          G_IMPLEMENT_INTERFACE (XDP_DBUS_TYPE_SESSION,
                                                 xdp_session_skeleton_iface_init))
+
+static void
+xdp_session_future_emit_closed (XdpSessionFuture *session)
+{
+  g_signal_emit (session, signals[SESSION_CLOSED], 0);
+}
 
 static void
 xdp_session_future_on_signal_closed (XdpDbusSession *object,
@@ -75,6 +89,9 @@ xdp_session_future_handle_close (XdpDbusSession        *object,
 
   dex_await (xdp_dbus_impl_session_call_close_future (session->impl_session),
              &error);
+
+  xdp_session_future_emit_closed (session);
+
   if (error)
     {
       g_dbus_method_invocation_return_gerror (invocation, error);
@@ -99,10 +116,10 @@ xdp_session_future_dispose (GObject *object)
 
   if (session->exported)
     {
-      xdp_dbus_impl_session_call_close (session->impl_session, NULL, NULL, NULL),
-
       g_dbus_interface_skeleton_unexport (G_DBUS_INTERFACE_SKELETON (session));
       session->exported = FALSE;
+
+      xdp_dbus_impl_session_call_close (session->impl_session, NULL, NULL, NULL);
     }
 
   g_clear_object (&session->app_info);
@@ -124,6 +141,13 @@ xdp_session_future_class_init (XdpSessionFutureClass *klass)
   GObjectClass *object_class = G_OBJECT_CLASS (klass);
 
   object_class->dispose = xdp_session_future_dispose;
+
+  signals[SESSION_CLOSED] =
+    g_signal_new ("session-closed",
+                  G_TYPE_FROM_CLASS (object_class),
+                  G_SIGNAL_RUN_LAST,
+                  0, NULL, NULL, NULL,
+                  G_TYPE_NONE, 0);
 }
 
 static void
@@ -139,10 +163,11 @@ on_peer_disconnect (XdpContext *context,
   if (!session->exported)
     return;
 
-  xdp_dbus_impl_session_call_close (session->impl_session, NULL, NULL, NULL),
-
   g_dbus_interface_skeleton_unexport (G_DBUS_INTERFACE_SKELETON (session));
   session->exported = FALSE;
+
+  xdp_dbus_impl_session_call_close (session->impl_session, NULL, NULL, NULL);
+  xdp_session_future_emit_closed (session);
 }
 
 static void
@@ -161,6 +186,8 @@ on_impl_closed (XdpDbusImplSession *object,
 
   g_dbus_interface_skeleton_unexport (G_DBUS_INTERFACE_SKELETON (session));
   session->exported = FALSE;
+
+  xdp_session_future_emit_closed (session);
 }
 
 static gboolean
@@ -301,6 +328,12 @@ gboolean
 xdp_session_future_is_closed (XdpSessionFuture *session)
 {
   return !session->exported;
+}
+
+XdpAppInfo *
+xdp_session_future_get_app_info (XdpSessionFuture *session)
+{
+  return session->app_info;
 }
 
 const char *

@@ -36,4 +36,6 @@ DexFuture * xdp_session_future_new (XdpContext             *context,
 
 gboolean xdp_session_future_is_closed (XdpSessionFuture *session);
 
+XdpAppInfo * xdp_session_future_get_app_info (XdpSessionFuture *session);
+
 const char * xdp_session_future_get_object_path (XdpSessionFuture *session);

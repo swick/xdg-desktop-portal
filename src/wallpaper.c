@@ -303,7 +303,7 @@ handle_set_wallpaper_file (XdpDbusWallpaper      *object,
         return G_DBUS_METHOD_INVOCATION_HANDLED;
       }
 
-    options = g_variant_ref_sink (g_variant_builder_end (&options_builder));
+    options = g_variant_ref_sink (g_variant_builder_end (&opt_builder));
   }
 
   {
@@ -332,7 +332,7 @@ handle_set_wallpaper_file (XdpDbusWallpaper      *object,
                                                       app_info,
                                                       G_DBUS_INTERFACE_SKELETON (object),
                                                       G_DBUS_PROXY (wallpaper->impl),
-                                                      options),
+                                                      arg_options),
                               &error);
   if (!request)
     {
