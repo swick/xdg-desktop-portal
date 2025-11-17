@@ -18,6 +18,7 @@
  */
 
 #include "xdp-app-info.h"
+#include "xdp-context.h"
 #include "xdp-impl-dbus.h"
 #include "xdp-utils.h"
 
@@ -35,6 +36,7 @@ typedef struct _XdpSessionFuture
 {
   XdpDbusSessionSkeleton parent_instance;
 
+  XdpContext *context;
   XdpAppInfo *app_info;
   XdpDbusImplSession *impl_session;
   GDBusInterfaceSkeleton *skeleton;
@@ -86,6 +88,7 @@ xdp_session_future_handle_close (XdpDbusSession        *object,
 
   g_dbus_interface_skeleton_unexport (G_DBUS_INTERFACE_SKELETON (session));
   session->exported = FALSE;
+  xdp_context_unclaim_object_path (session->context, session->id);
 
   dex_await (xdp_dbus_impl_session_call_close_future (session->impl_session),
              &error);
@@ -118,6 +121,7 @@ xdp_session_future_dispose (GObject *object)
     {
       g_dbus_interface_skeleton_unexport (G_DBUS_INTERFACE_SKELETON (session));
       session->exported = FALSE;
+      xdp_context_unclaim_object_path (session->context, session->id);
 
       xdp_dbus_impl_session_call_close (session->impl_session, NULL, NULL, NULL);
     }
@@ -165,6 +169,7 @@ on_peer_disconnect (XdpContext *context,
 
   g_dbus_interface_skeleton_unexport (G_DBUS_INTERFACE_SKELETON (session));
   session->exported = FALSE;
+  xdp_context_unclaim_object_path (session->context, session->id);
 
   xdp_dbus_impl_session_call_close (session->impl_session, NULL, NULL, NULL);
   xdp_session_future_emit_closed (session);
@@ -186,6 +191,7 @@ on_impl_closed (XdpDbusImplSession *object,
 
   g_dbus_interface_skeleton_unexport (G_DBUS_INTERFACE_SKELETON (session));
   session->exported = FALSE;
+  xdp_context_unclaim_object_path (session->context, session->id);
 
   xdp_session_future_emit_closed (session);
 }
@@ -220,7 +226,6 @@ typedef struct _SessionImplProxyCreateData {
 static void
 session_impl_proxy_create_data_free (SessionImplProxyCreateData *data)
 {
-  g_clear_object (&data->context);
   g_clear_object (&data->app_info);
   g_clear_object (&data->skeleton);
   g_clear_pointer (&data->id, g_free);
@@ -240,13 +245,14 @@ on_impl_session_proxy_created (DexFuture *future,
   g_assert (impl_session);
 
   session = g_object_new (XDP_TYPE_SESSION_FUTURE, NULL);
+  session->context = g_steal_pointer (&data->context);
   session->app_info = g_steal_pointer (&data->app_info);
   session->impl_session = g_steal_pointer (&impl_session);
   session->skeleton = g_steal_pointer (&data->skeleton);
   session->id = g_steal_pointer (&data->id);
   session->exported = TRUE;
 
-  g_signal_connect_object (data->context, "peer-disconnect",
+  g_signal_connect_object (session->context, "peer-disconnect",
                            G_CALLBACK (on_peer_disconnect),
                            session,
                            G_CONNECT_DEFAULT);
@@ -302,7 +308,15 @@ xdp_session_future_new (XdpContext             *context,
 
   id = g_strdup_printf (DESKTOP_DBUS_PATH "/session/%s/%s", sender, token);
 
-  // FIXME: register id with context, ensure unique
+  while (!xdp_context_claim_object_path (context, id))
+    {
+      uint32_t r = g_random_int ();
+      g_free (id);
+      id = g_strdup_printf (DESKTOP_DBUS_PATH "/session/%s/%s/%u",
+                            sender,
+                            token,
+                            r);
+    }
 
   future = xdp_dbus_impl_session_proxy_new_future (
     g_dbus_proxy_get_connection (proxy_impl),
@@ -311,7 +325,7 @@ xdp_session_future_new (XdpContext             *context,
     id);
 
   data = g_new0 (SessionImplProxyCreateData, 1);
-  data->context = g_object_ref (context);
+  data->context = context;
   data->app_info = g_object_ref (app_info);
   data->skeleton = g_object_ref (skeleton);
   data->id = g_steal_pointer (&id);
