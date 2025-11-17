@@ -341,3 +341,107 @@ xdp_session_future_get_object_path (XdpSessionFuture *session)
 {
   return session->id;
 }
+
+typedef struct _XdpSessionFutureStore
+{
+  GObject parent_instance;
+
+  size_t session_offset;
+  GHashTable *sessions; /* char *session_handle -> XdpSessionFuture *session */
+} XdpSessionFutureStore;
+
+G_DEFINE_FINAL_TYPE (XdpSessionFutureStore,
+                     xdp_session_future_store,
+                     G_TYPE_OBJECT)
+
+static void
+on_session_closed (XdpSessionFuture *session,
+                   gpointer          user_data)
+{
+  XdpSessionFutureStore *store = XDP_SESSION_FUTURE_STORE (user_data);
+
+  g_hash_table_remove (store->sessions,
+                       xdp_session_future_get_object_path (session));
+}
+
+void
+xdp_session_future_store_take_session (XdpSessionFutureStore *store,
+                                       gpointer               session_wrapper)
+{
+  g_autoptr(GObject) owned_wrapper = G_OBJECT (session_wrapper);
+  XdpSessionFuture *session;
+
+  session = XDP_SESSION_FUTURE (G_STRUCT_MEMBER_P (owned_wrapper,
+                                                   store->session_offset));
+
+  if (!session || xdp_session_future_is_closed (session))
+    return;
+
+  g_signal_connect_object (session, "session-closed",
+                           G_CALLBACK (on_session_closed),
+                           store,
+                           G_CONNECT_DEFAULT);
+
+  g_hash_table_insert (store->sessions,
+                       g_strdup (xdp_session_future_get_object_path (session)),
+                       g_steal_pointer (&owned_wrapper));
+}
+
+gpointer
+xdp_session_future_store_lookup_session (XdpSessionFutureStore *store,
+                                         const char            *session_handle,
+                                         XdpAppInfo            *app_info)
+{
+  GObject *session_wrapper =
+    g_hash_table_lookup (store->sessions, session_handle);
+  XdpSessionFuture *session;
+
+  if (!session_wrapper)
+    return NULL;
+
+  session = XDP_SESSION_FUTURE (G_STRUCT_MEMBER_P (session_wrapper,
+                                                   store->session_offset));
+
+  if (app_info && xdp_session_future_get_app_info (session) != app_info)
+    return NULL;
+
+  return session_wrapper;
+}
+
+static void
+xdp_session_future_store_dispose (GObject *object)
+{
+  XdpSessionFutureStore *store = XDP_SESSION_FUTURE_STORE (object);
+
+  g_clear_pointer (&store->sessions, g_hash_table_unref);
+
+  G_OBJECT_CLASS (xdp_session_future_store_parent_class)->dispose (object);
+}
+
+static void
+xdp_session_future_store_init (XdpSessionFutureStore *store)
+{
+}
+
+static void
+xdp_session_future_store_class_init (XdpSessionFutureStoreClass *klass)
+{
+  GObjectClass *object_class = G_OBJECT_CLASS (klass);
+
+  object_class->dispose = xdp_session_future_store_dispose;
+}
+
+XdpSessionFutureStore *
+xdp_session_future_store_new (size_t session_offset)
+{
+  XdpSessionFutureStore *store;
+
+  store = g_object_new (XDP_TYPE_SESSION_FUTURE_STORE, NULL);
+  store->session_offset = session_offset;
+  store->sessions =
+    g_hash_table_new_full (g_str_hash, g_str_equal,
+                           g_free,
+                           (GDestroyNotify) g_object_unref);
+
+  return store;
+}

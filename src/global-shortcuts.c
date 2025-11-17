@@ -42,7 +42,7 @@ struct _XdpGlobalShortcuts
 
   XdpContext *context;
   XdpDbusImplGlobalShortcuts *impl;
-  GHashTable *sessions; /* char *session_handle -> XdpSessionFuture *session */
+  XdpSessionFutureStore *sessions;
 };
 
 #define XDP_TYPE_GLOBAL_SHORTCUTS (xdp_global_shortcuts_get_type ())
@@ -58,52 +58,6 @@ G_DEFINE_FINAL_TYPE_WITH_CODE (XdpGlobalShortcuts,
                                XDP_DBUS_TYPE_GLOBAL_SHORTCUTS_SKELETON,
                                G_IMPLEMENT_INTERFACE (XDP_DBUS_TYPE_GLOBAL_SHORTCUTS,
                                                       xdp_global_shortcuts_iface_init))
-
-static void
-on_session_closed (XdpSessionFuture *session,
-                   gpointer          user_data)
-{
-  XdpGlobalShortcuts *global_shortcuts = XDP_GLOBAL_SHORTCUTS (user_data);
-
-  g_hash_table_remove (global_shortcuts->sessions,
-                       xdp_session_future_get_object_path (session));
-}
-
-static void
-xdp_global_shortcuts_take_session (XdpGlobalShortcuts *global_shortcuts,
-                                   XdpSessionFuture   *session)
-{
-  g_autoptr(XdpSessionFuture) owned_session = session;
-
-  if (!session || xdp_session_future_is_closed (session))
-    return;
-
-  g_signal_connect_object (session, "session-closed",
-                           G_CALLBACK (on_session_closed),
-                           global_shortcuts,
-                           G_CONNECT_DEFAULT);
-
-  g_hash_table_insert (global_shortcuts->sessions,
-                       g_strdup (xdp_session_future_get_object_path (session)),
-                       g_steal_pointer (&owned_session));
-}
-
-static XdpSessionFuture *
-xdp_global_shortcuts_lookup_session (XdpGlobalShortcuts *global_shortcuts,
-                                     const char         *session_handle,
-                                     XdpAppInfo         *app_info)
-{
-  XdpSessionFuture *session =
-    g_hash_table_lookup (global_shortcuts->sessions, session_handle);
-
-  if (!session)
-    return NULL;
-
-  if (app_info && xdp_session_future_get_app_info (session) != app_info)
-    return NULL;
-
-  return session;
-}
 
 static XdpOptionKey xdp_global_shortcuts_keys[] = {
   { "description", G_VARIANT_TYPE_STRING, NULL },
@@ -246,8 +200,8 @@ handle_create_session (XdpDbusGlobalShortcuts *object,
                                g_variant_new ("s",
                                               xdp_session_future_get_object_path (session)));
 
-        xdp_global_shortcuts_take_session (global_shortcuts,
-                                           g_steal_pointer (&session));
+        xdp_session_future_store_take_session (global_shortcuts->sessions,
+                                               g_steal_pointer (&session));
       }
     else
       {
@@ -320,9 +274,9 @@ handle_bind_shortcuts (XdpDbusGlobalShortcuts *object,
   }
 
   {
-    session = xdp_global_shortcuts_lookup_session (global_shortcuts,
-                                                   arg_session_handle,
-                                                   app_info);
+    session = xdp_session_future_store_lookup_session (global_shortcuts->sessions,
+                                                       arg_session_handle,
+                                                       app_info);
     if (!session)
       {
         g_dbus_method_invocation_return_error (g_steal_pointer (&invocation),
@@ -419,9 +373,9 @@ handle_list_shortcuts (XdpDbusGlobalShortcuts *object,
   }
 
   {
-    session = xdp_global_shortcuts_lookup_session (global_shortcuts,
-                                                   arg_session_handle,
-                                                   app_info);
+    session = xdp_session_future_store_lookup_session (global_shortcuts->sessions,
+                                                       arg_session_handle,
+                                                       app_info);
     if (!session)
       {
         g_dbus_method_invocation_return_error (g_steal_pointer (&invocation),
@@ -519,9 +473,9 @@ handle_configure_shortcuts (XdpDbusGlobalShortcuts *object,
   }
 
   {
-    session = xdp_global_shortcuts_lookup_session (global_shortcuts,
-                                                   arg_session_handle,
-                                                   app_info);
+    session = xdp_session_future_store_lookup_session (global_shortcuts->sessions,
+                                                       arg_session_handle,
+                                                       app_info);
     if (!session)
       {
         g_dbus_method_invocation_return_error (g_steal_pointer (&invocation),
@@ -573,7 +527,7 @@ xdp_global_shortcuts_dispose (GObject *object)
   XdpGlobalShortcuts *global_shortcuts = XDP_GLOBAL_SHORTCUTS (object);
 
   g_clear_object (&global_shortcuts->impl);
-  g_clear_pointer (&global_shortcuts->sessions, g_hash_table_unref);
+  g_clear_object (&global_shortcuts->sessions);
 
   G_OBJECT_CLASS (xdp_global_shortcuts_parent_class)->dispose (object);
 }
@@ -607,9 +561,9 @@ on_impl_activated (XdpDbusImplGlobalShortcuts *impl,
 
   g_debug ("Received activated %s for %s", session_id, shortcut_id);
 
-  session = xdp_global_shortcuts_lookup_session (global_shortcuts,
-                                                 session_id,
-                                                 NULL);
+  session = xdp_session_future_store_lookup_session (global_shortcuts->sessions,
+                                                     session_id,
+                                                     NULL);
 
   if (!session || xdp_session_future_is_closed (session))
     return;
@@ -643,9 +597,9 @@ on_impl_deactivated (XdpDbusImplGlobalShortcuts *impl,
 
   g_debug ("Received deactivated %s for %s", session_id, shortcut_id);
 
-  session = xdp_global_shortcuts_lookup_session (global_shortcuts,
-                                                 session_id,
-                                                 NULL);
+  session = xdp_session_future_store_lookup_session (global_shortcuts->sessions,
+                                                     session_id,
+                                                     NULL);
 
   if (!session || xdp_session_future_is_closed (session))
     return;
@@ -678,9 +632,9 @@ on_impl_shortcuts_changed (XdpDbusImplGlobalShortcuts *impl,
 
   g_debug ("Received ShortcutsChanged %s", session_id);
 
-  session = xdp_global_shortcuts_lookup_session (global_shortcuts,
-                                                 session_id,
-                                                 NULL);
+  session = xdp_session_future_store_lookup_session (global_shortcuts->sessions,
+                                                     session_id,
+                                                     NULL);
 
   if (!session || xdp_session_future_is_closed (session))
     return;
@@ -706,10 +660,7 @@ xdp_global_shortcuts_new (XdpContext                 *context,
   global_shortcuts = g_object_new (XDP_TYPE_GLOBAL_SHORTCUTS, NULL);
   global_shortcuts->context = context; // FIXME there might be problems with the context lifetime
   global_shortcuts->impl = g_object_ref (impl);
-  global_shortcuts->sessions =
-    g_hash_table_new_full (g_str_hash, g_str_equal,
-                           g_free,
-                           (GDestroyNotify) g_object_unref);
+  global_shortcuts->sessions = xdp_session_future_store_new (0);
 
   g_signal_connect_object (global_shortcuts->impl, "activated",
                            G_CALLBACK (on_impl_activated),
