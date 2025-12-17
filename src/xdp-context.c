@@ -456,8 +456,9 @@ xdp_context_register (XdpContext       *context,
     }
 
   init_portal_in_fiber (context, init_email);
-  init_portal_in_fiber (context, init_wallpaper);
   init_portal_in_fiber (context, init_global_shortcuts);
+  init_portal_in_fiber (context, init_inhibit);
+  init_portal_in_fiber (context, init_wallpaper);
   init_memory_monitor (context);
   init_power_profile_monitor (context);
   init_network_monitor (context);
@@ -470,7 +471,6 @@ xdp_context_register (XdpContext       *context,
   init_open_uri (context);
   init_print (context);
   init_notification (context);
-  init_inhibit (context);
 #if HAVE_GEOCLUE
   init_location (context);
 #endif

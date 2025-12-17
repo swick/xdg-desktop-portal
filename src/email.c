@@ -335,7 +335,7 @@ xdp_email_new (XdpContext       *context,
 {
   XdpEmail *email;
 
-  email = g_object_new (xdp_email_get_type (), NULL);
+  email = g_object_new (XDP_TYPE_EMAIL, NULL);
   email->context = context; // FIXME there might be problems with the context lifetime
   email->impl = g_object_ref (impl);
 
