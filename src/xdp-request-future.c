@@ -241,7 +241,7 @@ xdp_request_future_new (XdpContext             *context,
 {
   g_autoptr(DexFuture) future = NULL;
   RequestImplProxyCreateData *data;
-  const char *token;
+  const char *token = NULL;
   g_autofree char *sender = NULL;
   g_autofree char *id = NULL;
 
