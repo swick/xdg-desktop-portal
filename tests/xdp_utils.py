@@ -315,6 +315,7 @@ class AppInfo:
         usb_queries: str | None = None,
         desktop_entry: bytes | None = None,
         metadata: bytes | None = None,
+        entitlements: List[str] | None = None,
     ):
         kind = AppInfoKind.FLATPAK
         desktop_file = f"{app_id}.desktop"
@@ -361,6 +362,14 @@ devices=dri;
 enumerable-devices={usb_queries}
 """
             metadata += metadata_usb_str.encode("utf8")
+
+        if entitlements:
+            metadata_entitlements_str = "\n[Policy entitlement]\n"
+            metadata_entitlements_str += "enforce=strict\n"
+            metadata_entitlements_str += "grant="
+            for e in entitlements:
+                metadata_entitlements_str += f"{e};"
+            metadata += metadata_entitlements_str.encode("utf8")
 
         metadata_path = Path(os.environ["TMPDIR"]) / "flatpak-metadata"
 
