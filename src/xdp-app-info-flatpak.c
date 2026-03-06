@@ -482,6 +482,37 @@ xdp_app_info_flatpak_validate_dynamic_launcher (XdpAppInfo  *app_info,
   return TRUE;
 }
 
+static gboolean
+xdp_app_info_flatpak_has_entitlement (XdpAppInfo         *app_info,
+                                      const char         *entitlement,
+                                      XdpEntitlementKind  kind)
+{
+  XdpAppInfoFlatpak *app_info_flatpak = XDP_APP_INFO_FLATPAK (app_info);
+  g_auto(GStrv) entitlements = NULL;
+
+  if (kind == XDP_ENTITLEMENT_KIND_LEGACY)
+    {
+      g_auto(GStrv) enforce = NULL;
+
+      enforce = g_key_file_get_string_list (app_info_flatpak->flatpak_info,
+                                            "Policy entitlement",
+                                            "enforce",
+                                            NULL,
+                                            NULL);
+      if (!enforce || !g_strv_contains ((const char * const *) enforce,
+                                        "strict"))
+        return TRUE;
+    }
+
+  entitlements = g_key_file_get_string_list (app_info_flatpak->flatpak_info,
+                                             "Policy entitlement",
+                                             "grant",
+                                             NULL,
+                                             NULL);
+  return entitlements && g_strv_contains ((const char * const *) entitlements,
+                                          entitlement);
+}
+
 static void
 xdp_app_info_flatpak_dispose (GObject *object)
 {
@@ -511,6 +542,8 @@ xdp_app_info_flatpak_class_init (XdpAppInfoFlatpakClass *klass)
     xdp_app_info_flatpak_validate_dynamic_launcher;
   app_info_class->is_valid_sub_app_id =
     xdp_app_info_flatpak_is_valid_sub_app_id;
+  app_info_class->has_entitlement =
+    xdp_app_info_flatpak_has_entitlement;
 }
 
 static void
