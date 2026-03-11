@@ -327,6 +327,7 @@ do_create_doc (struct stat *parent_st_buf, const char *path, gboolean reuse_exis
     flags |= DOCUMENT_ENTRY_FLAG_TRANSIENT;
   if (directory)
     flags |= DOCUMENT_ENTRY_FLAG_DIRECTORY;
+  // FIXME: create one with the handle that we want to insert
   data =
     g_variant_ref_sink (g_variant_new ("(^ayttu)",
                                        path,
@@ -336,6 +337,10 @@ do_create_doc (struct stat *parent_st_buf, const char *path, gboolean reuse_exis
 
   if (reuse_existing)
     {
+      /* FIXME: we can have an id with the same dev+ino, but without a handle
+       * yet. We have to remote the existing entry and add a new one with the
+       * handle. */
+
       ids = permission_db_list_ids_by_value (db, data);
 
       if (ids[0] != NULL)
@@ -1257,6 +1262,10 @@ portal_lookup (GDBusMethodInvocation *invocation,
     }
   else
     {
+      /* FIXME: the data can contain the handle as well, so we need
+       * to search first for a variant which includes the handle
+       * and fall back to the other cases afterwards */
+
       g_autoptr(GVariant) data = NULL;
       g_autoptr(GVariant) data_transient = NULL;
       g_auto(GStrv) ids = NULL;
