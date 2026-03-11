@@ -156,3 +156,14 @@ document_entry_get_flags (PermissionDbEntry *entry)
   g_autoptr(GVariant) c = g_variant_get_child_value (v, 3);
   return g_variant_get_uint32 (c);
 }
+
+const char *
+document_entry_get_handle (PermissionDbEntry *entry)
+{
+  g_autoptr(GVariant) v = permission_db_entry_get_data (entry);
+  if (g_variant_n_children (v) < 5)
+    return NULL;
+
+  g_autoptr(GVariant) c = g_variant_get_child_value (v, 4);
+  return g_variant_get_bytestring (c);
+}
