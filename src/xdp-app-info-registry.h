@@ -21,6 +21,7 @@
 
 #include <glib-object.h>
 #include <gio/gio.h>
+#include <libdex.h>
 
 #include "xdp-types.h"
 
@@ -48,3 +49,6 @@ XdpAppInfo * xdp_app_info_registry_ensure_for_invocation_sync (XdpAppInfoRegistr
                                                                GDBusMethodInvocation  *invocation,
                                                                GCancellable           *cancellable,
                                                                GError                **error);
+
+DexFuture * xdp_app_info_registry_ensure_for_invocation_future (XdpAppInfoRegistry    *registry,
+                                                                GDBusMethodInvocation *invocation);
