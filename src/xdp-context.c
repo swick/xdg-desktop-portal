@@ -228,14 +228,11 @@ authorize_callback_fiber (GDBusInterfaceSkeleton *interface,
   g_autoptr(XdpAppInfo) app_info = NULL;
   g_autoptr(GError) error = NULL;
 
-  // FIXME: this is awful if this is running in a fiber
-  // because it will block the main thread.
-  // We would need some kind of async variant of ensure_for_invocation_sync.
-  // Which would require some sort of async mutex
-  app_info = xdp_app_info_registry_ensure_for_invocation_sync (context->app_info_registry,
-                                                               invocation,
-                                                               NULL,
-                                                               &error);
+  app_info = dex_await_object (xdp_app_info_registry_ensure_for_invocation_future (
+      context->app_info_registry,
+      invocation),
+    &error);
+
   if (app_info == NULL)
     {
       g_dbus_method_invocation_return_error (invocation,
@@ -256,13 +253,15 @@ authorize_callback (GDBusInterfaceSkeleton *interface,
                     gpointer                user_data)
 {
   XdpContext *context = XDP_CONTEXT (user_data);
+  g_autoptr(DexFuture) future = NULL;
   g_autoptr(XdpAppInfo) app_info = NULL;
   g_autoptr(GError) error = NULL;
 
-  app_info = xdp_app_info_registry_ensure_for_invocation_sync (context->app_info_registry,
-                                                               invocation,
-                                                               NULL,
-                                                               &error);
+  future = xdp_app_info_registry_ensure_for_invocation_future (context->app_info_registry,
+                                                               invocation);
+  dex_thread_wait_for (dex_ref (future), NULL);
+
+  app_info = dex_await_object (g_steal_pointer (&future), &error);
   if (app_info == NULL)
     {
       g_dbus_method_invocation_return_error (invocation,
