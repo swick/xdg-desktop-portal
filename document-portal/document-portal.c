@@ -311,13 +311,25 @@ portal_delete (GDBusMethodInvocation *invocation,
 }
 
 static char *
-do_create_doc (struct stat *parent_st_buf, const char *path, gboolean reuse_existing, gboolean persistent, gboolean directory)
+find_id (const char *path,
+         dev_t       st_dev,
+         ino_t       st_ino,
+         const char *handle,
+         uint32_t    flags);
+
+static char *
+do_create_doc (struct stat *parent_st_buf,
+               const char  *path,
+               gboolean     reuse_existing,
+               gboolean     persistent,
+               gboolean     directory)
 {
   g_autoptr(GVariant) data = NULL;
   g_autoptr(PermissionDbEntry) entry = NULL;
-  g_auto(GStrv) ids = NULL;
-  char *id = NULL;
+  g_autofree char *id = NULL;
   guint32 flags = 0;
+  const char *handle = "";
+  // FIXME take handle from caller
 
   g_debug ("Creating document at path '%s', reuse_existing: %d, persistent: %d, directory: %d", path, reuse_existing, persistent, directory);
 
@@ -327,24 +339,37 @@ do_create_doc (struct stat *parent_st_buf, const char *path, gboolean reuse_exis
     flags |= DOCUMENT_ENTRY_FLAG_TRANSIENT;
   if (directory)
     flags |= DOCUMENT_ENTRY_FLAG_DIRECTORY;
-  // FIXME: create one with the handle that we want to insert
+
   data =
-    g_variant_ref_sink (g_variant_new ("(^ayttu)",
+    g_variant_ref_sink (g_variant_new ("(^ayttu^ay)",
                                        path,
-                                       (guint64) parent_st_buf->st_dev,
-                                       (guint64) parent_st_buf->st_ino,
-                                       flags));
+                                       (uint64_t) parent_st_buf->st_dev,
+                                       (uint64_t) parent_st_buf->st_ino,
+                                       flags,
+                                       handle));
 
   if (reuse_existing)
     {
-      /* FIXME: we can have an id with the same dev+ino, but without a handle
-       * yet. We have to remote the existing entry and add a new one with the
-       * handle. */
+      id = find_id (path,
+                    parent_st_buf->st_dev,
+                    parent_st_buf->st_ino,
+                    handle,
+                    flags);
 
-      ids = permission_db_list_ids_by_value (db, data);
+      if (id)
+        {
+          g_autoptr(PermissionDbEntry) entry_old = permission_db_lookup (db, id);
 
-      if (ids[0] != NULL)
-        return g_strdup (ids[0]);  /* Reuse pre-existing entry with same path */
+          /* If the old entry does not contain a handle, we update it */
+          if (g_strcmp0 (document_entry_get_handle (entry_old), handle) != 0)
+            {
+              entry = permission_db_entry_new (data);
+              permission_db_set_entry (db, id, entry);
+            }
+
+          /* Reuse pre-existing entry with same path */
+          return g_steal_pointer (&id);
+        }
     }
 
   while (TRUE)
@@ -374,7 +399,7 @@ do_create_doc (struct stat *parent_st_buf, const char *path, gboolean reuse_exis
                                      NULL, NULL, NULL);
     }
 
-  return id;
+  return g_steal_pointer (&id);
 }
 
 gboolean
@@ -1221,6 +1246,7 @@ typedef struct _FindIdData {
   uint32_t  flags;
 } FindIdData;
 
+/* matches a specific dev+ino, if the entry has no handle */
 static gboolean
 matches_dev_ino (GVariant *data,
                  gpointer  user_data)
@@ -1236,6 +1262,15 @@ matches_dev_ino (GVariant *data,
                  &st_dev,
                  &st_ino,
                  &flags);
+
+  if (g_variant_n_children (data) >= 5)
+    {
+      const char *handle = NULL;
+
+      g_variant_get_child (data, 4, "^&ay", &handle);
+      if (g_strcmp0 (handle, "") != 0)
+        return FALSE;
+    }
 
   return g_strcmp0 (path, match->path) == 0 &&
          st_dev == match->st_dev &&
@@ -1269,10 +1304,10 @@ matches_handle (GVariant *data,
 
 static char *
 find_id (const char *path,
-         gboolean    is_dir,
          dev_t       st_dev,
          ino_t       st_ino,
-         const char *handle)
+         const char *handle,
+         uint32_t    flags)
 {
   g_autoptr(GVariant) data = NULL;
   g_autoptr(GVariant) data_transient = NULL;
@@ -1283,7 +1318,44 @@ find_id (const char *path,
   find_data = (FindIdData) {
     .path = path,
     .handle = handle,
-    .flags = is_dir ? DOCUMENT_ENTRY_FLAG_DIRECTORY : 0,
+    .flags = flags,
+  };
+
+  ids = permission_db_filter_ids (db, matches_handle, &find_data);
+  if (ids[0] != NULL)
+    return g_strdup (ids[0]);
+
+  find_data = (FindIdData) {
+    .path = path,
+    .st_dev = st_dev,
+    .st_ino = st_ino,
+    .flags = flags,
+  };
+
+  ids = permission_db_filter_ids (db, matches_dev_ino, &find_data);
+  if (ids[0] != NULL)
+    return g_strdup (ids[0]);
+
+  return NULL;
+}
+
+static char *
+find_id_transient (const char *path,
+                   dev_t       st_dev,
+                   ino_t       st_ino,
+                   const char *handle,
+                   uint32_t    flags)
+{
+  g_autoptr(GVariant) data = NULL;
+  g_autoptr(GVariant) data_transient = NULL;
+  g_auto(GStrv) ids = NULL;
+  g_auto(GStrv) transient_ids = NULL;
+  FindIdData find_data;
+
+  find_data = (FindIdData) {
+    .path = path,
+    .handle = handle,
+    .flags = flags,
   };
 
   ids = permission_db_filter_ids (db, matches_handle, &find_data);
@@ -1300,7 +1372,7 @@ find_id (const char *path,
     .path = path,
     .st_dev = st_dev,
     .st_ino = st_ino,
-    .flags = is_dir ? DOCUMENT_ENTRY_FLAG_DIRECTORY : 0,
+    .flags = flags,
   };
 
   ids = permission_db_filter_ids (db, matches_dev_ino, &find_data);
@@ -1365,9 +1437,12 @@ portal_lookup (GDBusMethodInvocation *invocation,
     }
   else
     {
-      id = find_id (path, is_dir,
-                    real_dir_st_buf.st_dev, real_dir_st_buf.st_ino,
-                    NULL);
+      // FIXME lookup parent fd -> handle
+      id = find_id_transient (path,
+                              real_dir_st_buf.st_dev,
+                              real_dir_st_buf.st_ino,
+                              NULL,
+                              is_dir ? DOCUMENT_ENTRY_FLAG_DIRECTORY : 0);
     }
 
   g_dbus_method_invocation_return_value (invocation,
