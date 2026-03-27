@@ -37,6 +37,7 @@
 #include <gio/gio.h>
 #include <gio/gunixfdlist.h>
 #include <glib-unix.h>
+#include <libglnx.h>
 #include "document-portal-dbus.h"
 #include "document-store.h"
 #include "src/xdp-app-info.h"
@@ -404,8 +405,6 @@ do_create_doc (struct stat *parent_st_buf,
 static char *
 get_handle_from_fd (int fd)
 {
-  return "";
-#if 0
   g_autofree struct file_handle *handle = NULL;
 
   if (!glnx_name_to_handle_at (fd, "",
@@ -416,7 +415,6 @@ get_handle_from_fd (int fd)
     return "";
 
   return g_memdup2 (handle->f_handle, handle->handle_bytes);
-#endif
 }
 
 gboolean
