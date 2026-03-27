@@ -315,6 +315,15 @@ GBytes *
 xdp_file_handle_for_fd (int fd)
 {
   g_autofree struct file_handle *handle = NULL;
+  g_autofd int path_fd = -1;
+
+  if (!(fcntl (fd, F_GETFL) & O_PATH))
+    {
+      path_fd = glnx_fd_reopen (fd, O_PATH, NULL);
+      if (path_fd < 0)
+        return NULL;
+      fd = path_fd;
+    }
 
   if (!glnx_name_to_handle_at (fd, "",
                                AT_EMPTY_PATH | AT_HANDLE_FID,
@@ -905,6 +914,7 @@ document_add_full (int                      *fd,
           if (real_path)
             {
               g_autofree char *dirname = NULL;
+              g_autofd int dir_fd = -1;
 
               g_free (path);
               path = g_steal_pointer (&real_path);
@@ -913,13 +923,18 @@ document_add_full (int                      *fd,
                 dirname = g_strdup (path);
               else
                 dirname = g_path_get_dirname (path);
-              if (lstat (dirname, &real_dir_st_bufs[i]) != 0)
+
+              dir_fd = open (dirname, O_CLOEXEC | O_PATH);
+              if (dir_fd < 0 || fstat (dir_fd, &real_dir_st_bufs[i]) != 0)
                 {
                   g_set_error (error,
                                XDG_DESKTOP_PORTAL_ERROR, XDG_DESKTOP_PORTAL_ERROR_INVALID_ARGUMENT,
                                "Invalid fd passed");
                   return NULL;
                 }
+
+              g_bytes_unref (g_ptr_array_index (handles, i));
+              g_ptr_array_index (handles, i) = xdp_file_handle_for_fd (dir_fd);
             }
           else
             g_ptr_array_index(ids,i) = g_steal_pointer (&id);
