@@ -1214,10 +1214,10 @@ handle_get_mount_point (XdpDbusDocuments *object, GDBusMethodInvocation *invocat
 }
 
 typedef struct _FindIdData {
-  char     *path;
+  const char     *path;
   dev_t     st_dev;
   ino_t     st_ino;
-  char     *handle;
+  const char     *handle;
   uint32_t  flags;
 } FindIdData;
 
@@ -1229,7 +1229,6 @@ matches_dev_ino (GVariant *data,
   const char *path;
   uint64_t st_dev;
   uint64_t st_ino;
-  char *handle;
   uint32_t flags;
 
   g_variant_get (data, "(^&ayttu)",
@@ -1244,6 +1243,30 @@ matches_dev_ino (GVariant *data,
          flags == match->flags;
 }
 
+static gboolean
+matches_handle (GVariant *data,
+                gpointer  user_data)
+{
+  FindIdData *match = user_data;
+  const char *path;
+  const char *handle;
+  uint32_t flags;
+
+  if (g_variant_n_children (data) < 5)
+    return FALSE;
+
+  g_variant_get (data, "(^&ayttu^&ay)",
+                 &path,
+                 NULL,
+                 NULL,
+                 &flags,
+                 &handle);
+
+  return g_strcmp0 (path, match->path) == 0 &&
+         g_strcmp0 (handle, match->handle) == 0 &&
+         flags == match->flags;
+}
+
 static char *
 find_id (const char *path,
          gboolean    is_dir,
@@ -1251,48 +1274,44 @@ find_id (const char *path,
          ino_t       st_ino,
          const char *handle)
 {
-  /* FIXME: the data can contain the handle as well, so we need
-   * to search first for a variant which includes the handle
-   * and fall back to the other cases afterwards */
-
   g_autoptr(GVariant) data = NULL;
   g_autoptr(GVariant) data_transient = NULL;
   g_auto(GStrv) ids = NULL;
   g_auto(GStrv) transient_ids = NULL;
-  guint32 flags = 0;
   FindIdData find_data;
 
-  if (is_dir)
-    flags |= DOCUMENT_ENTRY_FLAG_DIRECTORY;
-
-#if 0
   find_data = (FindIdData) {
-    path = path,
-    st_dev = st_dev,
-    st_ino = st_ino,
-    flags = flags,
+    .path = path,
+    .handle = handle,
+    .flags = is_dir ? DOCUMENT_ENTRY_FLAG_DIRECTORY : 0,
   };
 
-  permission_db_filter_ids (db, matches_dev_ino, &find_data);
-#endif
-
-  data = g_variant_ref_sink (g_variant_new ("(^ayttu)",
-                                            path,
-                                            (uint64_t) st_dev,
-                                            (uint64_t) st_ino,
-                                            flags));
-  ids = permission_db_list_ids_by_value (db, data);
+  ids = permission_db_filter_ids (db, matches_handle, &find_data);
   if (ids[0] != NULL)
     return g_strdup (ids[0]);
 
-  data_transient = g_variant_ref_sink (g_variant_new ("(^ayttu)",
-                                                      path,
-                                                      (uint64_t) st_dev,
-                                                      (uint64_t) st_ino,
-                                                      flags|DOCUMENT_ENTRY_FLAG_TRANSIENT));
-  transient_ids = permission_db_list_ids_by_value (db, data_transient);
-  if (transient_ids[0] != NULL)
-    return g_strdup (transient_ids[0]);
+  find_data.flags |= DOCUMENT_ENTRY_FLAG_TRANSIENT;
+
+  ids = permission_db_filter_ids (db, matches_handle, &find_data);
+  if (ids[0] != NULL)
+    return g_strdup (ids[0]);
+
+  find_data = (FindIdData) {
+    .path = path,
+    .st_dev = st_dev,
+    .st_ino = st_ino,
+    .flags = is_dir ? DOCUMENT_ENTRY_FLAG_DIRECTORY : 0,
+  };
+
+  ids = permission_db_filter_ids (db, matches_dev_ino, &find_data);
+  if (ids[0] != NULL)
+    return g_strdup (ids[0]);
+
+  find_data.flags |= DOCUMENT_ENTRY_FLAG_TRANSIENT;
+
+  ids = permission_db_filter_ids (db, matches_dev_ino, &find_data);
+  if (ids[0] != NULL)
+    return g_strdup (ids[0]);
 
   return NULL;
 }
