@@ -156,3 +156,22 @@ document_entry_get_flags (PermissionDbEntry *entry)
   g_autoptr(GVariant) c = g_variant_get_child_value (v, 3);
   return g_variant_get_uint32 (c);
 }
+
+GBytes *
+document_entry_dup_handle (PermissionDbEntry *entry)
+{
+  g_autoptr(GVariant) v = permission_db_entry_get_data (entry);
+  g_autoptr(GVariant) maybe_handle = NULL;
+  g_autoptr(GVariant) handle_variant = NULL;
+
+  if (g_variant_n_children (v) < 5)
+    return NULL;
+
+  maybe_handle = g_variant_get_child_value (v, 4);
+  handle_variant = g_variant_get_maybe (maybe_handle);
+
+  if (handle_variant == NULL)
+    return NULL;
+
+  return g_variant_get_data_as_bytes (handle_variant);
+}
