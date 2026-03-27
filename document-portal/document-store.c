@@ -157,6 +157,10 @@ document_entry_get_flags (PermissionDbEntry *entry)
   return g_variant_get_uint32 (c);
 }
 
+// FIXME: This is pretty fucked; the handle can contain 0 bytes
+// so it can't be a char *
+// need to fix it everywhere
+// maybe use struct file_handle?
 const char *
 document_entry_get_handle (PermissionDbEntry *entry)
 {
