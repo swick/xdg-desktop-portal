@@ -978,11 +978,20 @@ xdp_domain_get_doc_dir (XdpDomain   *doc_domain,
   if (fstat (dirfd, buf) != 0)
     return -errno;
 
-  if (buf->st_ino != doc_domain->doc_dir_inode ||
-      buf->st_dev != doc_domain->doc_dir_device)
-    return -ENOENT;
+  if (doc_domain->doc_dir_handle != NULL)
+    {
+      /* If we have a handle, use it exclusively — st_dev is not stable across reboots */
+      g_autoptr(GBytes) handle = xdp_file_handle_for_fd (dirfd);
 
-  // FIXME: check doc_dir_handle if not NULL
+      if (handle == NULL || !g_bytes_equal (handle, doc_domain->doc_dir_handle))
+        return -ENOENT;
+    }
+  else
+    {
+      if (buf->st_ino != doc_domain->doc_dir_inode ||
+          buf->st_dev != doc_domain->doc_dir_device)
+        return -ENOENT;
+    }
 
   if (dirfd_out)
     *dirfd_out = g_steal_fd (&dirfd);

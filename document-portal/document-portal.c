@@ -311,8 +311,8 @@ portal_delete (GDBusMethodInvocation *invocation,
   g_dbus_method_invocation_return_value (invocation, g_variant_new ("()"));
 }
 
-static GBytes *
-get_handle_from_fd (int fd)
+GBytes *
+xdp_file_handle_for_fd (int fd)
 {
   g_autofree struct file_handle *handle = NULL;
 
@@ -476,7 +476,7 @@ validate_fd (int fd,
     goto errout;
 
   if (real_dir_handle_out)
-    *real_dir_handle_out = get_handle_from_fd (dir_fd);
+    *real_dir_handle_out = xdp_file_handle_for_fd (dir_fd);
 
   if (name != NULL)
     {
@@ -836,6 +836,7 @@ document_add_full (int                      *fd,
   const char *app_id = xdp_app_info_get_id (app_info);
   g_autoptr(GPtrArray) ids = g_ptr_array_new_with_free_func (g_free);
   g_autoptr(GPtrArray) paths = g_ptr_array_new_with_free_func (g_free);
+  g_autoptr(GPtrArray) handles = g_ptr_array_new_with_free_func ((GDestroyNotify) g_bytes_unref);
   g_autofree struct stat *real_dir_st_bufs = NULL;
   struct stat st_buf;
   g_autofree gboolean *writable = NULL;
@@ -843,6 +844,7 @@ document_add_full (int                      *fd,
 
   g_ptr_array_set_size (paths, n_args + 1);
   g_ptr_array_set_size (ids, n_args + 1);
+  g_ptr_array_set_size (handles, n_args + 1);
   real_dir_st_bufs = g_new0 (struct stat, n_args);
   writable = g_new0 (gboolean, n_args);
 
@@ -857,7 +859,11 @@ document_add_full (int                      *fd,
       is_dir = (flags & DOCUMENT_ADD_FLAGS_DIRECTORY) != 0;
       allow_write = (target_perms & DOCUMENT_PERMISSION_FLAGS_WRITE) != 0;
 
-      if (!validate_fd (fd[i], app_info, is_dir ? VALIDATE_FD_FILE_TYPE_DIR : VALIDATE_FD_FILE_TYPE_REGULAR, &st_buf, &real_dir_st_bufs[i], NULL, &path, &writable[i], error))
+      if (!validate_fd (fd[i], app_info,
+                        is_dir ? VALIDATE_FD_FILE_TYPE_DIR : VALIDATE_FD_FILE_TYPE_REGULAR,
+                        &st_buf, &real_dir_st_bufs[i],
+                        (GBytes **)&g_ptr_array_index (handles, i),
+                        &path, &writable[i], error))
         return NULL;
 
       if (parent_dev != NULL && parent_ino != NULL)
@@ -956,8 +962,7 @@ document_add_full (int                      *fd,
 
         if (g_ptr_array_index(ids,i) == NULL)
           {
-            // FIXME get handle
-            char *id = do_create_doc (&real_dir_st_bufs[i], NULL, path, reuse_existing, persistent, is_dir);
+            char *id = do_create_doc (&real_dir_st_bufs[i], g_ptr_array_index (handles, i), path, reuse_existing, persistent, is_dir);
             g_ptr_array_index(ids,i) = id;
 
             if (app_id[0] != '\0' && strcmp (app_id, target_app_id) != 0)
@@ -1013,6 +1018,7 @@ portal_add_named_full (GDBusMethodInvocation *invocation,
   g_autofree char *parent_path = NULL;
   const int *fds = NULL;
   struct stat parent_st_buf;
+  g_autoptr(GBytes) handle = NULL;
   gboolean reuse_existing, persistent, as_needed_by_app;
   guint32 flags = 0;
   const char *filename;
@@ -1093,6 +1099,7 @@ portal_add_named_full (GDBusMethodInvocation *invocation,
       return;
     }
 
+  handle = xdp_file_handle_for_fd (parent_fd);
   path = g_build_filename (parent_path, filename, NULL);
 
   g_debug ("portal_add_named_full %s", path);
@@ -1117,8 +1124,7 @@ portal_add_named_full (GDBusMethodInvocation *invocation,
       }
     else
       {
-        // FIXME get handle
-        id = do_create_doc (&parent_st_buf, NULL, path, reuse_existing, persistent, FALSE);
+        id = do_create_doc (&parent_st_buf, handle, path, reuse_existing, persistent, FALSE);
 
         if (app_id[0] != '\0' && strcmp (app_id, target_app_id) != 0)
           {
@@ -1169,6 +1175,7 @@ portal_add_named (GDBusMethodInvocation *invocation,
   g_autofree char *parent_path = NULL;
   g_autofree char *path = NULL;
   struct stat parent_st_buf;
+  g_autoptr(GBytes) handle = NULL;
   const char *filename;
   gboolean reuse_existing, persistent;
   g_autoptr(GError) local_error = NULL;
@@ -1221,12 +1228,12 @@ portal_add_named (GDBusMethodInvocation *invocation,
       return;
     }
 
+  handle = xdp_file_handle_for_fd (parent_fd);
   path = g_build_filename (parent_path, filename, NULL);
 
   XDP_AUTOLOCK (db);
 
-  // FIXME take handle from caller
-  id = do_create_doc (&parent_st_buf, NULL, path, reuse_existing, persistent, FALSE);
+  id = do_create_doc (&parent_st_buf, handle, path, reuse_existing, persistent, FALSE);
 
   g_dbus_method_invocation_return_value (invocation,
                                          g_variant_new ("(s)", id));
