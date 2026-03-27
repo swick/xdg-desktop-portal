@@ -311,16 +311,41 @@ portal_delete (GDBusMethodInvocation *invocation,
   g_dbus_method_invocation_return_value (invocation, g_variant_new ("()"));
 }
 
+static GBytes *
+get_handle_from_fd (int fd)
+{
+  g_autofree struct file_handle *handle = NULL;
+
+  if (!glnx_name_to_handle_at (fd, "",
+                               AT_EMPTY_PATH | AT_HANDLE_FID,
+                               &handle,
+                               NULL,
+                               NULL))
+    return NULL;
+
+  return g_bytes_new (handle->f_handle, handle->handle_bytes);
+}
+
+static GVariant *
+handle_to_variant (GBytes *handle)
+{
+  if (handle != NULL)
+    return g_variant_new_maybe (G_VARIANT_TYPE_BYTESTRING,
+                                g_variant_new_from_bytes (G_VARIANT_TYPE_BYTESTRING, handle, TRUE));
+  else
+    return g_variant_new_maybe (G_VARIANT_TYPE_BYTESTRING, NULL);
+}
+
 static char *
 find_id (const char *path,
          dev_t       st_dev,
          ino_t       st_ino,
-         const char *handle,
+         GBytes     *handle,
          uint32_t    flags);
 
 static char *
 do_create_doc (struct stat *parent_st_buf,
-               const char  *handle,
+               GBytes      *handle,
                const char  *path,
                gboolean     reuse_existing,
                gboolean     persistent,
@@ -341,12 +366,12 @@ do_create_doc (struct stat *parent_st_buf,
     flags |= DOCUMENT_ENTRY_FLAG_DIRECTORY;
 
   data =
-    g_variant_ref_sink (g_variant_new ("(^ayttu^ay)",
+    g_variant_ref_sink (g_variant_new ("(^ayttu@may)",
                                        path,
                                        (uint64_t) parent_st_buf->st_dev,
                                        (uint64_t) parent_st_buf->st_ino,
                                        flags,
-                                       handle));
+                                       handle_to_variant (handle)));
 
   if (reuse_existing)
     {
@@ -359,9 +384,10 @@ do_create_doc (struct stat *parent_st_buf,
       if (id)
         {
           g_autoptr(PermissionDbEntry) entry_old = permission_db_lookup (db, id);
+          g_autoptr(GBytes) old_handle = document_entry_dup_handle (entry_old);
 
           /* If the old entry does not contain a handle, we update it */
-          if (g_strcmp0 (document_entry_get_handle (entry_old), handle) != 0)
+          if (handle != NULL && old_handle == NULL)
             {
               entry = permission_db_entry_new (data);
               permission_db_set_entry (db, id, entry);
@@ -402,28 +428,13 @@ do_create_doc (struct stat *parent_st_buf,
   return g_steal_pointer (&id);
 }
 
-static char *
-get_handle_from_fd (int fd)
-{
-  g_autofree struct file_handle *handle = NULL;
-
-  if (!glnx_name_to_handle_at (fd, "",
-                               AT_EMPTY_PATH | AT_HANDLE_FID,
-                               &handle,
-                               NULL,
-                               NULL))
-    return "";
-
-  return g_memdup2 (handle->f_handle, handle->handle_bytes);
-}
-
 gboolean
 validate_fd (int fd,
              XdpAppInfo *app_info,
              ValidateFdType ensure_type,
              struct stat *st_buf,
              struct stat *real_dir_st_buf,
-             char **real_dir_handle_out,
+             GBytes **real_dir_handle_out,
              char **path_out,
              gboolean *writable_out,
              GError **error)
@@ -946,7 +957,7 @@ document_add_full (int                      *fd,
         if (g_ptr_array_index(ids,i) == NULL)
           {
             // FIXME get handle
-            char *id = do_create_doc (&real_dir_st_bufs[i], "", path, reuse_existing, persistent, is_dir);
+            char *id = do_create_doc (&real_dir_st_bufs[i], NULL, path, reuse_existing, persistent, is_dir);
             g_ptr_array_index(ids,i) = id;
 
             if (app_id[0] != '\0' && strcmp (app_id, target_app_id) != 0)
@@ -1107,7 +1118,7 @@ portal_add_named_full (GDBusMethodInvocation *invocation,
     else
       {
         // FIXME get handle
-        id = do_create_doc (&parent_st_buf, "", path, reuse_existing, persistent, FALSE);
+        id = do_create_doc (&parent_st_buf, NULL, path, reuse_existing, persistent, FALSE);
 
         if (app_id[0] != '\0' && strcmp (app_id, target_app_id) != 0)
           {
@@ -1215,7 +1226,7 @@ portal_add_named (GDBusMethodInvocation *invocation,
   XDP_AUTOLOCK (db);
 
   // FIXME take handle from caller
-  id = do_create_doc (&parent_st_buf, "", path, reuse_existing, persistent, FALSE);
+  id = do_create_doc (&parent_st_buf, NULL, path, reuse_existing, persistent, FALSE);
 
   g_dbus_method_invocation_return_value (invocation,
                                          g_variant_new ("(s)", id));
@@ -1261,11 +1272,11 @@ handle_get_mount_point (XdpDbusDocuments *object, GDBusMethodInvocation *invocat
 }
 
 typedef struct _FindIdData {
-  const char     *path;
-  dev_t     st_dev;
-  ino_t     st_ino;
-  const char     *handle;
-  uint32_t  flags;
+  const char *path;
+  dev_t       st_dev;
+  ino_t       st_ino;
+  GBytes     *handle;
+  uint32_t    flags;
 } FindIdData;
 
 /* matches a specific dev+ino, if the entry has no handle */
@@ -1279,19 +1290,21 @@ matches_dev_ino (GVariant *data,
   uint64_t st_ino;
   uint32_t flags;
 
-  g_variant_get (data, "(^&ayttu)",
-                 &path,
-                 &st_dev,
-                 &st_ino,
-                 &flags);
-
+  /* Only match if entry has no handle (old format or NULL handle) */
   if (g_variant_n_children (data) >= 5)
     {
-      const char *handle = NULL;
+      g_autoptr(GVariant) maybe_handle = NULL;
+      g_autoptr(GVariant) handle_variant = NULL;
 
-      g_variant_get_child (data, 4, "^&ay", &handle);
-      if (g_strcmp0 (handle, "") != 0)
+      g_variant_get (data, "(^&ayttu@may)", &path, &st_dev, &st_ino, &flags, &maybe_handle);
+      handle_variant = g_variant_get_maybe (maybe_handle);
+
+      if (handle_variant != NULL)
         return FALSE;
+    }
+  else
+    {
+      g_variant_get (data, "(^&ayttu)", &path, &st_dev, &st_ino, &flags);
     }
 
   return g_strcmp0 (path, match->path) == 0 &&
@@ -1306,21 +1319,29 @@ matches_handle (GVariant *data,
 {
   FindIdData *match = user_data;
   const char *path;
-  const char *handle;
   uint32_t flags;
+  g_autoptr(GVariant) maybe_handle = NULL;
+  g_autoptr(GVariant) handle_variant = NULL;
+  g_autoptr(GBytes) handle = NULL;
 
   if (g_variant_n_children (data) < 5)
     return FALSE;
 
-  g_variant_get (data, "(^&ayttu^&ay)",
+  g_variant_get (data, "(^&ayttu@may)",
                  &path,
                  NULL,
                  NULL,
                  &flags,
-                 &handle);
+                 &maybe_handle);
+
+  handle_variant = g_variant_get_maybe (maybe_handle);
+  if (handle_variant != NULL)
+    handle = g_variant_get_data_as_bytes (handle_variant);
 
   return g_strcmp0 (path, match->path) == 0 &&
-         g_strcmp0 (handle, match->handle) == 0 &&
+         match->handle != NULL &&
+         handle != NULL &&
+         g_bytes_equal (handle, match->handle) &&
          flags == match->flags;
 }
 
@@ -1328,13 +1349,10 @@ static char *
 find_id (const char *path,
          dev_t       st_dev,
          ino_t       st_ino,
-         const char *handle,
+         GBytes     *handle,
          uint32_t    flags)
 {
-  g_autoptr(GVariant) data = NULL;
-  g_autoptr(GVariant) data_transient = NULL;
   g_auto(GStrv) ids = NULL;
-  g_auto(GStrv) transient_ids = NULL;
   FindIdData find_data;
 
   find_data = (FindIdData) {
@@ -1365,13 +1383,10 @@ static char *
 find_id_transient (const char *path,
                    dev_t       st_dev,
                    ino_t       st_ino,
-                   const char *handle,
+                   GBytes     *handle,
                    uint32_t    flags)
 {
-  g_autoptr(GVariant) data = NULL;
-  g_autoptr(GVariant) data_transient = NULL;
   g_auto(GStrv) ids = NULL;
-  g_auto(GStrv) transient_ids = NULL;
   FindIdData find_data;
 
   find_data = (FindIdData) {
@@ -1419,7 +1434,7 @@ portal_lookup (GDBusMethodInvocation *invocation,
   g_autofree char *path = NULL;
   g_autofd int fd = -1;
   struct stat st_buf, real_dir_st_buf;
-  g_autofree char *handle = NULL;
+  g_autoptr(GBytes) handle = NULL;
   g_autofree char *id = NULL;
   GError *error = NULL;
   gboolean is_dir;

@@ -157,17 +157,21 @@ document_entry_get_flags (PermissionDbEntry *entry)
   return g_variant_get_uint32 (c);
 }
 
-// FIXME: This is pretty fucked; the handle can contain 0 bytes
-// so it can't be a char *
-// need to fix it everywhere
-// maybe use struct file_handle?
-const char *
-document_entry_get_handle (PermissionDbEntry *entry)
+GBytes *
+document_entry_dup_handle (PermissionDbEntry *entry)
 {
   g_autoptr(GVariant) v = permission_db_entry_get_data (entry);
+  g_autoptr(GVariant) maybe_handle = NULL;
+  g_autoptr(GVariant) handle_variant = NULL;
+
   if (g_variant_n_children (v) < 5)
     return NULL;
 
-  g_autoptr(GVariant) c = g_variant_get_child_value (v, 4);
-  return g_variant_get_bytestring (c);
+  maybe_handle = g_variant_get_child_value (v, 4);
+  handle_variant = g_variant_get_maybe (maybe_handle);
+
+  if (handle_variant == NULL)
+    return NULL;
+
+  return g_variant_get_data_as_bytes (handle_variant);
 }

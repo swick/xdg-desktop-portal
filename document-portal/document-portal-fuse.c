@@ -190,7 +190,7 @@ struct _XdpDomain {
   guint64 doc_dir_device;
   guint64 doc_dir_inode;
   guint32 doc_flags;
-  char *doc_dir_handle;
+  GBytes *doc_dir_handle;
 
   /* Below is mutable, protected by mutex */
   GMutex  tempfile_mutex;
@@ -565,7 +565,7 @@ xdp_domain_unref (XdpDomain *domain)
       g_free (domain->app_id);
       g_free (domain->doc_path);
       g_free (domain->doc_file);
-      g_free (domain->doc_dir_handle);
+      g_clear_pointer (&domain->doc_dir_handle, g_bytes_unref);
       if (domain->inodes)
         g_assert (g_hash_table_size (domain->inodes) == 0);
       g_clear_pointer (&domain->inodes, g_hash_table_unref);
@@ -650,7 +650,7 @@ xdp_domain_new_document (XdpDomain         *parent,
   domain->doc_flags = document_entry_get_flags (doc_entry);
   domain->doc_dir_device = document_entry_get_device (doc_entry);
   domain->doc_dir_inode =  document_entry_get_inode (doc_entry);
-  domain->doc_dir_handle = g_strdup (document_entry_get_handle (doc_entry));
+  domain->doc_dir_handle = document_entry_dup_handle (doc_entry);
 
   db_path = document_entry_get_path (doc_entry);
   if (xdp_document_domain_is_dir (domain))
