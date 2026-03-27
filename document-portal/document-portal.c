@@ -319,6 +319,7 @@ find_id (const char *path,
 
 static char *
 do_create_doc (struct stat *parent_st_buf,
+               const char  *handle,
                const char  *path,
                gboolean     reuse_existing,
                gboolean     persistent,
@@ -328,8 +329,6 @@ do_create_doc (struct stat *parent_st_buf,
   g_autoptr(PermissionDbEntry) entry = NULL;
   g_autofree char *id = NULL;
   guint32 flags = 0;
-  const char *handle = "";
-  // FIXME take handle from caller
 
   g_debug ("Creating document at path '%s', reuse_existing: %d, persistent: %d, directory: %d", path, reuse_existing, persistent, directory);
 
@@ -402,12 +401,31 @@ do_create_doc (struct stat *parent_st_buf,
   return g_steal_pointer (&id);
 }
 
+static char *
+get_handle_from_fd (int fd)
+{
+  return "";
+#if 0
+  g_autofree struct file_handle *handle = NULL;
+
+  if (!glnx_name_to_handle_at (fd, "",
+                               AT_EMPTY_PATH | AT_HANDLE_FID,
+                               &handle,
+                               NULL,
+                               NULL))
+    return "";
+
+  return g_memdup2 (handle->f_handle, handle->handle_bytes);
+#endif
+}
+
 gboolean
 validate_fd (int fd,
              XdpAppInfo *app_info,
              ValidateFdType ensure_type,
              struct stat *st_buf,
              struct stat *real_dir_st_buf,
+             char **real_dir_handle_out,
              char **path_out,
              gboolean *writable_out,
              GError **error)
@@ -447,6 +465,9 @@ validate_fd (int fd,
   dir_fd = open (dirname, O_CLOEXEC | O_PATH);
   if (dir_fd < 0 || fstat (dir_fd, real_dir_st_buf) != 0)
     goto errout;
+
+  if (real_dir_handle_out)
+    *real_dir_handle_out = get_handle_from_fd (dir_fd);
 
   if (name != NULL)
     {
@@ -827,7 +848,7 @@ document_add_full (int                      *fd,
       is_dir = (flags & DOCUMENT_ADD_FLAGS_DIRECTORY) != 0;
       allow_write = (target_perms & DOCUMENT_PERMISSION_FLAGS_WRITE) != 0;
 
-      if (!validate_fd (fd[i], app_info, is_dir ? VALIDATE_FD_FILE_TYPE_DIR : VALIDATE_FD_FILE_TYPE_REGULAR, &st_buf, &real_dir_st_bufs[i], &path, &writable[i], error))
+      if (!validate_fd (fd[i], app_info, is_dir ? VALIDATE_FD_FILE_TYPE_DIR : VALIDATE_FD_FILE_TYPE_REGULAR, &st_buf, &real_dir_st_bufs[i], NULL, &path, &writable[i], error))
         return NULL;
 
       if (parent_dev != NULL && parent_ino != NULL)
@@ -926,7 +947,8 @@ document_add_full (int                      *fd,
 
         if (g_ptr_array_index(ids,i) == NULL)
           {
-            char *id = do_create_doc (&real_dir_st_bufs[i], path, reuse_existing, persistent, is_dir);
+            // FIXME get handle
+            char *id = do_create_doc (&real_dir_st_bufs[i], "", path, reuse_existing, persistent, is_dir);
             g_ptr_array_index(ids,i) = id;
 
             if (app_id[0] != '\0' && strcmp (app_id, target_app_id) != 0)
@@ -1086,7 +1108,8 @@ portal_add_named_full (GDBusMethodInvocation *invocation,
       }
     else
       {
-        id = do_create_doc (&parent_st_buf, path, reuse_existing, persistent, FALSE);
+        // FIXME get handle
+        id = do_create_doc (&parent_st_buf, "", path, reuse_existing, persistent, FALSE);
 
         if (app_id[0] != '\0' && strcmp (app_id, target_app_id) != 0)
           {
@@ -1193,7 +1216,8 @@ portal_add_named (GDBusMethodInvocation *invocation,
 
   XDP_AUTOLOCK (db);
 
-  id = do_create_doc (&parent_st_buf, path, reuse_existing, persistent, FALSE);
+  // FIXME take handle from caller
+  id = do_create_doc (&parent_st_buf, "", path, reuse_existing, persistent, FALSE);
 
   g_dbus_method_invocation_return_value (invocation,
                                          g_variant_new ("(s)", id));
@@ -1397,6 +1421,7 @@ portal_lookup (GDBusMethodInvocation *invocation,
   g_autofree char *path = NULL;
   g_autofd int fd = -1;
   struct stat st_buf, real_dir_st_buf;
+  g_autofree char *handle = NULL;
   g_autofree char *id = NULL;
   GError *error = NULL;
   gboolean is_dir;
@@ -1421,7 +1446,7 @@ portal_lookup (GDBusMethodInvocation *invocation,
       return TRUE;
     }
 
-  if (!validate_fd (fd, app_info, VALIDATE_FD_FILE_TYPE_ANY, &st_buf, &real_dir_st_buf, &path, NULL, &error))
+  if (!validate_fd (fd, app_info, VALIDATE_FD_FILE_TYPE_ANY, &st_buf, &real_dir_st_buf, &handle, &path, NULL, &error))
     {
       g_dbus_method_invocation_take_error (invocation, error);
       return TRUE;
@@ -1437,11 +1462,10 @@ portal_lookup (GDBusMethodInvocation *invocation,
     }
   else
     {
-      // FIXME lookup parent fd -> handle
       id = find_id_transient (path,
                               real_dir_st_buf.st_dev,
                               real_dir_st_buf.st_ino,
-                              NULL,
+                              handle,
                               is_dir ? DOCUMENT_ENTRY_FLAG_DIRECTORY : 0);
     }
 
