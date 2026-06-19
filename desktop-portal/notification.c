@@ -1337,5 +1337,5 @@ init_notification (XdpContext *context)
   xdp_context_take_and_export_portal (context,
                                       G_DBUS_INTERFACE_SKELETON (g_steal_pointer (&notification)),
                                       XDP_ENTITLEMENT_NOTIFICATION,
-                                      XDP_CONTEXT_EXPORT_FLAGS_NONE);
+                                      XDP_CONTEXT_EXPORT_FLAGS_RUN_IN_THREAD);
 }
