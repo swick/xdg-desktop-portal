@@ -9,9 +9,30 @@
       org.freedesktop.portal.Camera:
       @short_description: Portal for accessing cameras
 
-      The camera portal enables applications to access camera devices, such as
-      web cams.
-  -->
+      The Camera portal enables applications to access camera devices,
+      such as web cams.
+
+      Accessing cameras
+      ~~~~~~~~~~~~~~~~~
+
+      Camera access follows a two-step process:
+
+      1. Call ``AccessCamera()`` to request permission. This may prompt
+         the user for consent.
+
+      2. After permission is granted, call ``OpenPipeWireRemote()`` to
+         obtain a file descriptor for a PipeWire remote.
+
+      The ``IsCameraPresent`` property can be used to check whether any
+      cameras are available before requesting access.
+
+      PipeWire connection
+      ~~~~~~~~~~~~~~~~~~~
+
+      The file descriptor returned by ``OpenPipeWireRemote()`` should be
+      passed to ``pw_context_connect_fd()`` to create a ``pw_core``
+      object. Camera nodes will be available on this connection.
+    -->
   <interface name="org.freedesktop.portal.Camera">
     <!--
         AccessCamera:

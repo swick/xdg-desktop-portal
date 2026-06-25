@@ -9,10 +9,69 @@
       org.freedesktop.portal.RemoteDesktop:
       @short_description: Portal for remote desktop sessions
 
-      The Remote desktop portal allows to create remote desktop sessions.
+      The Remote Desktop portal allows applications to remotely control
+      a desktop session. It can optionally capture screen content and
+      access the clipboard by integrating with the
+      :ref:`org.freedesktop.portal.ScreenCast` and
+      :ref:`org.freedesktop.portal.Clipboard` portals.
 
       This documentation describes version 2 of this interface.
-  -->
+
+      Session workflow
+      ~~~~~~~~~~~~~~~~
+
+      A remote desktop session requires several steps:
+
+      1. Create a session with ``CreateSession()``.
+      2. Select input devices with ``SelectDevices()``.
+      3. Optionally, call
+         :ref:`org.freedesktop.portal.ScreenCast.SelectSources` on the
+         same session to also capture screen content.
+      4. Optionally, call
+         :ref:`org.freedesktop.portal.Clipboard.RequestClipboard` on
+         the same session to access the clipboard.
+      5. Call ``Start()`` to begin the session. This typically presents
+         a dialog for the user to approve.
+
+      Only this portal can start and stop the session, even when
+      Screen Cast or Clipboard features are used.
+
+      Input methods
+      ~~~~~~~~~~~~~
+
+      There are two ways to send input events:
+
+      - **EIS (preferred):** Call ``ConnectToEIS()`` after starting the
+        session to get a file descriptor for a libei sender context.
+        All input events are then sent through libei. Once an EIS
+        connection is established, the ``Notify*`` methods are
+        disabled.
+
+      - **D-Bus notifications (legacy):** Use the ``Notify*`` methods
+        (``NotifyPointerMotion()``, ``NotifyKeyboardKeycode()``, etc.)
+        to send individual input events over D-Bus.
+
+      Screen content
+      ~~~~~~~~~~~~~~
+
+      To also capture screen content, call
+      :ref:`org.freedesktop.portal.ScreenCast.SelectSources` on the
+      session before starting it, and
+      :ref:`org.freedesktop.portal.ScreenCast.OpenPipeWireRemote` to
+      obtain a PipeWire connection after starting.
+
+      When using EIS with screen content, the ``mapping_id`` stream
+      property can be used to pair PipeWire streams with libei device
+      regions for absolute pointer input.
+
+      Session persistence
+      ~~~~~~~~~~~~~~~~~~~
+
+      Sessions can optionally persist across application restarts.
+      Pass ``persist_mode`` and optionally a ``restore_token`` in
+      ``SelectDevices()`` to restore a previously granted session
+      without prompting the user again.
+    -->
   <interface name="org.freedesktop.portal.RemoteDesktop">
     <!--
         CreateSession:

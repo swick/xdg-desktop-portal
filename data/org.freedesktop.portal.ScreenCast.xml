@@ -9,10 +9,66 @@
       org.freedesktop.portal.ScreenCast:
       @short_description: Portal for screen cast sessions
 
-      The Screen cast portal allows to create screen cast sessions.
+      The Screen Cast portal allows applications to capture screen
+      content as PipeWire video streams.
 
       This documentation describes version 6 of this interface.
-  -->
+
+      Session workflow
+      ~~~~~~~~~~~~~~~~
+
+      A screen cast session requires several steps:
+
+      1. Create a session with ``CreateSession()``.
+      2. Configure what to capture with ``SelectSources()``. This
+         can only be called once per session.
+      3. Call ``Start()``, which typically shows a dialog letting
+         the user select the content to share. The response includes
+         the PipeWire stream information.
+      4. Call ``OpenPipeWireRemote()`` to obtain a file descriptor
+         for the PipeWire remote.
+
+      The file descriptor should be passed to
+      ``pw_context_connect_fd()`` to create a ``pw_core`` object.
+
+      Source types
+      ~~~~~~~~~~~~
+
+      Applications can request different types of sources via
+      ``SelectSources()``:
+
+      - Monitor: share an entire monitor
+      - Window: share a specific application window
+      - Virtual: create a new virtual monitor
+
+      The ``AvailableSourceTypes`` property indicates which types the
+      current portal implementation supports.
+
+      Cursor modes
+      ~~~~~~~~~~~~
+
+      Applications can choose how the cursor appears in the stream:
+
+      - Hidden: the cursor is not part of the stream
+      - Embedded: the cursor is drawn into the stream buffers
+      - Metadata: cursor position is sent as PipeWire stream metadata
+
+      The ``AvailableCursorModes`` property indicates which modes are
+      supported.
+
+      Session persistence
+      ~~~~~~~~~~~~~~~~~~~
+
+      Sessions can optionally persist across application restarts.
+      To enable this, pass a ``persist_mode`` in ``SelectSources()``.
+      If granted, the ``Start()`` response includes a
+      ``restore_token`` that can be passed to a subsequent
+      ``SelectSources()`` call to restore the same session without
+      prompting the user again.
+
+      Restore tokens are single-use: each ``Start()`` response
+      returns a new token for the next restore.
+    -->
   <interface name="org.freedesktop.portal.ScreenCast">
     <!--
         CreateSession:

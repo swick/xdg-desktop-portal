@@ -12,8 +12,53 @@
 
       The Clipboard portal allows sessions to access the clipboard.
 
+      This portal does not create its own sessions. Instead, it
+      extends sessions created by other portals with clipboard
+      support. See :ref:`org.freedesktop.portal.RemoteDesktop` and
+      :ref:`org.freedesktop.portal.InputCapture` for portals that
+      support clipboard integration.
+
       This documentation describes version 1 of this interface.
-  -->
+
+      Session setup
+      ~~~~~~~~~~~~~
+
+      Before using the clipboard, call ``RequestClipboard()`` on an
+      existing session. This must be done before the session is
+      started.
+
+      Providing clipboard content
+      ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+      To advertise clipboard content, call ``SetSelection()`` with the
+      list of MIME types the application can provide. The session
+      becomes the clipboard owner.
+
+      When another party requests the content, the portal emits a
+      ``SelectionTransfer`` signal with the requested MIME type and
+      a serial number. The application must then:
+
+      1. Call ``SelectionWrite()`` with the serial to obtain a file
+         descriptor.
+      2. Write the clipboard content to the file descriptor.
+      3. Call ``SelectionWriteDone()`` with the serial and whether
+         the transfer succeeded.
+
+      Reading clipboard content
+      ~~~~~~~~~~~~~~~~~~~~~~~~~
+
+      The ``SelectionOwnerChanged`` signal is emitted when the
+      clipboard selection changes, including the list of available
+      MIME types. To read the content, call ``SelectionRead()`` with
+      the desired MIME type to obtain a file descriptor.
+
+      File transfers
+      ~~~~~~~~~~~~~~
+
+      Files can be transferred via the clipboard using the
+      ``application/vnd.portal.filetransfer`` MIME type. See
+      :ref:`org.freedesktop.portal.FileTransfer` for details.
+    -->
   <interface name="org.freedesktop.portal.Clipboard">
     <!-- 
         RequestClipboard:
