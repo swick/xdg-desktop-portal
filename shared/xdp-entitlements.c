@@ -40,6 +40,8 @@ static const XdpEntitlementInfo xdp_entitlements[] =
     { .name = CAMERA_ENTITLEMENT_NAME, .version = 1 },
   [XDP_ENTITLEMENT_CLIPBOARD] =
     { .name = CLIPBOARD_ENTITLEMENT_NAME, .version = 1 },
+  [XDP_ENTITLEMENT_CREDENTIAL] =
+    { .name = CREDENTIAL_ENTITLEMENT_NAME, .version = 1 },
   [XDP_ENTITLEMENT_DYNAMIC_LAUNCHER] =
     { .name = DYNAMIC_LAUNCHER_ENTITLEMENT_NAME, .version = 1 },
   [XDP_ENTITLEMENT_EMAIL] =
