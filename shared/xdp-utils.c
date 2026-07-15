@@ -245,11 +245,11 @@ xdp_connection_get_pidfd (GDBusConnection *connection,
   dex_return_error_if_fail (G_IS_DBUS_CONNECTION (connection));
   dex_return_error_if_fail (sender != NULL);
 
-  return dex_scheduler_spawn_closure (NULL, 0,
-                                      G_CALLBACK (connection_get_pidfd_fiber),
-                                      2,
-                                      G_TYPE_DBUS_CONNECTION, connection,
-                                      G_TYPE_STRING, sender);
+  return dex_scheduler_spawnv (NULL, 0,
+                               G_CALLBACK (connection_get_pidfd_fiber),
+                               2,
+                               G_TYPE_DBUS_CONNECTION, connection,
+                               G_TYPE_STRING, sender);
 }
 
 static gboolean
