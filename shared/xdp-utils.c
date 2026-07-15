@@ -149,11 +149,38 @@ xdp_pid_fd_result_new (uint32_t pid,
   return result;
 }
 
+static XdpPidFdResult *
+fiber_helper_get_pidfd_legacy (GDBusConnection *connection,
+                               const char      *sender,
+                               GError         **error)
+{
+  g_autoptr(DexFuture) future = NULL;
+  g_autoptr(GError) local_error = NULL;
+  g_autoptr(GVariant) reply = NULL;
+  uint32_t pid;
+
+  future = dex_dbus_connection_call (connection,
+                                     DBUS_DBUS_NAME,
+                                     DBUS_DBUS_PATH,
+                                     DBUS_DBUS_IFACE,
+                                     "GetConnectionUnixProcessID",
+                                     g_variant_new ("(s)", sender),
+                                     G_VARIANT_TYPE ("(u)"),
+                                     G_DBUS_CALL_FLAGS_NONE,
+                                     30000);
+
+  reply = dex_await_variant (g_steal_pointer (&future), error);
+  if (!reply)
+    return NULL;
+
+  g_variant_get (reply, "(u)", &pid);
+  return xdp_pid_fd_result_new (pid, -1);
+}
+
 static DexFuture *
 connection_get_pidfd_fiber (GDBusConnection *connection,
                             const char      *sender)
 {
-  g_autoptr(GVariant) parameters = NULL;
   g_autoptr(DexFuture) future = NULL;
   g_autoptr(GError) local_error = NULL;
   g_autoptr(GVariant) reply = NULL;
@@ -165,13 +192,12 @@ connection_get_pidfd_fiber (GDBusConnection *connection,
   uint32_t pid;
   g_autofd int pidfd = -1;
 
-  parameters = g_variant_ref_sink (g_variant_new ("(s)", sender));
   future = dex_dbus_connection_call_with_unix_fd_list (connection,
                                                        DBUS_DBUS_NAME,
                                                        DBUS_DBUS_PATH,
                                                        DBUS_DBUS_IFACE,
                                                        "GetConnectionCredentials",
-                                                       parameters,
+                                                       g_variant_new ("(s)", sender),
                                                        G_VARIANT_TYPE ("(a{sv})"),
                                                        G_DBUS_CALL_FLAGS_NONE,
                                                        30000,
@@ -180,7 +206,16 @@ connection_get_pidfd_fiber (GDBusConnection *connection,
   if (!dex_await (dex_ref (future), &local_error))
     {
       if (g_error_matches (local_error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_INTERFACE))
-        goto do_legacy;
+        {
+          g_autoptr(XdpPidFdResult) result = NULL;
+
+          g_clear_error (&local_error);
+          result = fiber_helper_get_pidfd_legacy (connection, sender, &local_error);
+
+          if (result)
+            return dex_future_new_take_boxed (XDP_TYPE_PID_FD_RESULT,
+                                              g_steal_pointer (&result));
+        }
       return dex_future_new_for_error (g_steal_pointer (&local_error));
     }
 
@@ -191,7 +226,17 @@ connection_get_pidfd_fiber (GDBusConnection *connection,
 
   process_id = g_variant_lookup_value (dict, "ProcessID", G_VARIANT_TYPE_UINT32);
   if (!process_id)
-    goto do_legacy;
+    {
+      g_autoptr(XdpPidFdResult) result = NULL;
+
+      result = fiber_helper_get_pidfd_legacy (connection, sender, &local_error);
+
+      if (result)
+        return dex_future_new_take_boxed (XDP_TYPE_PID_FD_RESULT,
+                                          g_steal_pointer (&result));
+      else
+        return dex_future_new_for_error (g_steal_pointer (&local_error));
+    }
 
   pid = g_variant_get_uint32 (process_id);
 
@@ -214,30 +259,6 @@ connection_get_pidfd_fiber (GDBusConnection *connection,
 
   return dex_future_new_take_boxed (XDP_TYPE_PID_FD_RESULT,
                                     xdp_pid_fd_result_new (pid, g_steal_fd (&pidfd)));
-
- do_legacy:
-  g_clear_error (&local_error);
-  dex_clear (&future);
-  g_clear_pointer (&reply, g_variant_unref);
-
-  future = dex_dbus_connection_call (connection,
-                                     DBUS_DBUS_NAME,
-                                     DBUS_DBUS_PATH,
-                                     DBUS_DBUS_IFACE,
-                                     "GetConnectionUnixProcessID",
-                                     parameters,
-                                     G_VARIANT_TYPE ("(u)"),
-                                     G_DBUS_CALL_FLAGS_NONE,
-                                     30000);
-
-  reply = dex_await_variant (g_steal_pointer (&future), &local_error);
-  if (!reply)
-    return dex_future_new_for_error (g_steal_pointer (&local_error));
-
-  g_variant_get (reply, "(u)", &pid);
-
-  return dex_future_new_take_boxed (XDP_TYPE_PID_FD_RESULT,
-                                    xdp_pid_fd_result_new (pid, -1));
 }
 
 DexFuture *
