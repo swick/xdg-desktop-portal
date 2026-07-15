@@ -135,6 +135,19 @@ xdp_pid_fd_result_unref (XdpPidFdResult *self)
 
 G_DEFINE_BOXED_TYPE (XdpPidFdResult, xdp_pid_fd_result, xdp_pid_fd_result_ref, xdp_pid_fd_result_unref);
 
+XdpPidFdResult *
+xdp_pid_fd_result_new (uint32_t pid,
+                       int      fd)
+{
+  XdpPidFdResult *result = g_new0 (XdpPidFdResult, 1);
+
+  g_atomic_ref_count_init (&result->rc);
+  result->pid = pid;
+  result->fd = fd;
+
+  return result;
+}
+
 static DexFuture *
 connection_get_pidfd_fiber (GDBusConnection *connection,
                             const char      *sender)
@@ -147,7 +160,6 @@ connection_get_pidfd_fiber (GDBusConnection *connection,
   g_autoptr(GVariant) dict = NULL;
   g_autoptr(GVariant) process_fd = NULL;
   g_autoptr(GVariant) process_id = NULL;
-  g_autoptr(XdpPidFdResult) result = NULL;
   int fd_id;
   uint32_t pid;
   g_autofd int pidfd = -1;
@@ -184,13 +196,8 @@ connection_get_pidfd_fiber (GDBusConnection *connection,
 
   process_fd = g_variant_lookup_value (dict, "ProcessFD", G_VARIANT_TYPE_HANDLE);
   if (!process_fd)
-    {
-      result = g_new0 (XdpPidFdResult, 1);
-      g_atomic_ref_count_init (&result->rc);
-      result->pid = pid;
-      result->fd = -1;
-      return dex_future_new_take_boxed (XDP_TYPE_PID_FD_RESULT, g_steal_pointer (&result));
-    }
+    return dex_future_new_take_boxed (XDP_TYPE_PID_FD_RESULT,
+                                      xdp_pid_fd_result_new (pid, -1));
 
   fd_id = g_variant_get_handle (process_fd);
 
@@ -204,11 +211,8 @@ connection_get_pidfd_fiber (GDBusConnection *connection,
   if (pidfd < 0)
     return dex_future_new_for_error (g_steal_pointer (&local_error));
 
-  result = g_new0 (XdpPidFdResult, 1);
-  g_atomic_ref_count_init (&result->rc);
-  result->pid = pid;
-  result->fd = g_steal_fd (&pidfd);
-  return dex_future_new_take_boxed (XDP_TYPE_PID_FD_RESULT, g_steal_pointer (&result));
+  return dex_future_new_take_boxed (XDP_TYPE_PID_FD_RESULT,
+                                    xdp_pid_fd_result_new (pid, g_steal_fd (&pidfd)));
 
  do_legacy:
   g_clear_error (&local_error);
@@ -231,11 +235,8 @@ connection_get_pidfd_fiber (GDBusConnection *connection,
 
   g_variant_get (reply, "(u)", &pid);
 
-  result = g_new0 (XdpPidFdResult, 1);
-  g_atomic_ref_count_init (&result->rc);
-  result->pid = pid;
-  result->fd = -1;
-  return dex_future_new_take_boxed (XDP_TYPE_PID_FD_RESULT, g_steal_pointer (&result));
+  return dex_future_new_take_boxed (XDP_TYPE_PID_FD_RESULT,
+                                    xdp_pid_fd_result_new (pid, -1));
 }
 
 DexFuture *

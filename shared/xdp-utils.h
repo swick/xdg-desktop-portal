@@ -51,11 +51,17 @@ typedef struct {
   uint32_t pid;
   int fd;
 } XdpPidFdResult;
+
 #define XDP_TYPE_PID_FD_RESULT (xdp_pid_fd_result_get_type ())
 GType xdp_pid_fd_result_get_type (void);
+
 XdpPidFdResult * xdp_pid_fd_result_ref (XdpPidFdResult *self);
+
 void xdp_pid_fd_result_unref (XdpPidFdResult *self);
 G_DEFINE_AUTOPTR_CLEANUP_FUNC(XdpPidFdResult, xdp_pid_fd_result_unref);
+
+XdpPidFdResult * xdp_pid_fd_result_new (uint32_t pid,
+                                        int      fd);
 
 DexFuture * xdp_connection_get_pidfd (GDBusConnection *connection,
                                       const char      *sender);
