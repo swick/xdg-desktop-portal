@@ -133,7 +133,8 @@ xdp_pid_fd_result_unref (XdpPidFdResult *self)
   g_free (self);
 }
 
-G_DEFINE_BOXED_TYPE (XdpPidFdResult, xdp_pid_fd_result, xdp_pid_fd_result_ref, xdp_pid_fd_result_unref);
+G_DEFINE_BOXED_TYPE (XdpPidFdResult, xdp_pid_fd_result,
+                     xdp_pid_fd_result_ref, xdp_pid_fd_result_unref);
 
 XdpPidFdResult *
 xdp_pid_fd_result_new (uint32_t pid,
