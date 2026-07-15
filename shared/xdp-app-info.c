@@ -374,7 +374,7 @@ static DexFuture *
 app_info_new_for_invocation_then (DexFuture *future,
                                   gpointer   user_data)
 {
-  GDBusMethodInvocation *invocation = user_data;
+  GDBusMethodInvocation *invocation = G_DBUS_METHOD_INVOCATION (user_data);
   const char *sender = g_dbus_method_invocation_get_sender (invocation);
   g_autoptr(XdpPidFdResult) result = NULL;
   g_autoptr(GError) local_error = NULL;
