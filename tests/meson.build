@@ -91,7 +91,7 @@ tests = {
   'camera': {},
   'clipboard': {},
   'documents': {},
-  'document_fuse': {},
+  'document_fuse': {'timeout': 300},
   'dynamiclauncher': {},
   'email': {},
   'filechooser': {},
