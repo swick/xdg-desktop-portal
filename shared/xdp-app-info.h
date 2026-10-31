@@ -10,6 +10,7 @@
 
 #include <gio/gdesktopappinfo.h>
 #include <gio/gio.h>
+#include <libglnx.h>
 #include <libdex.h>
 
 typedef enum _XdpAppInfoError
@@ -52,9 +53,7 @@ gboolean xdp_app_info_is_valid_sub_app_id (XdpAppInfo *app_info,
 
 gboolean xdp_app_info_has_network (XdpAppInfo *app_info);
 
-gboolean xdp_app_info_get_pidns (XdpAppInfo  *app_info,
-                                 ino_t       *pidns_id_out,
-                                 GError     **error);
+GLnxPidRef * xdp_app_info_get_pidref (XdpAppInfo *app_info);
 
 char * xdp_app_info_remap_path (XdpAppInfo *app_info,
                                 const char *path);

@@ -9,165 +9,81 @@
 #include <sys/stat.h>
 
 #include <gio/gio.h>
-#include <sys/sysmacros.h>
 
-#include "xdp-utils.h"
-
-typedef struct _XdpMountNsEntry
-{
-  char *root;
-  size_t root_len;
-  char *mount_point;
-  size_t mount_point_len;
-  dev_t dev;
-} XdpMountNsEntry;
+#include <glnx-mountinfo.h>
 
 struct _XdpMountNs
 {
-  GPtrArray *entries;      /* XdpMountNsEntry - sandbox mounts */
-  GPtrArray *host_entries; /* XdpMountNsEntry - host mounts */
+  GPtrArray *entries;      /* (element-type GLnxMountInfo) - sandbox mounts */
+  GPtrArray *host_entries; /* (element-type GLnxMountInfo) - host mounts */
 };
-
-/* Decode mountinfo octal escapes (\040 for space, etc.) */
-static char *
-mountinfo_unescape (const char *str)
-{
-  g_autoptr(GString) result = g_string_new (NULL);
-
-  for (; *str; str++)
-    {
-      if (str[0] == '\\' &&
-          str[1] >= '0' && str[1] <= '3' &&
-          str[2] >= '0' && str[2] <= '7' &&
-          str[3] >= '0' && str[3] <= '7')
-        {
-          g_string_append_c (result,
-                             ((str[1] - '0') << 6) |
-                             ((str[2] - '0') << 3) |
-                             ((str[3] - '0') << 0));
-          str += 3;
-        }
-      else
-        {
-          g_string_append_c (result, *str);
-        }
-    }
-
-  return g_string_free_and_steal (g_steal_pointer (&result));
-}
-
-static void
-mount_ns_entry_free (XdpMountNsEntry *entry)
-{
-  g_free (entry->root);
-  g_free (entry->mount_point);
-  g_free (entry);
-}
-
-G_DEFINE_AUTOPTR_CLEANUP_FUNC (XdpMountNsEntry, mount_ns_entry_free)
-
 
 static int
 compare_mount_point_len_desc (gconstpointer a,
                               gconstpointer b)
 {
-  const XdpMountNsEntry *entry_a = *(const XdpMountNsEntry **) a;
-  const XdpMountNsEntry *entry_b = *(const XdpMountNsEntry **) b;
+  GLnxMountInfo *info_a = *(GLnxMountInfo **) a;
+  GLnxMountInfo *info_b = *(GLnxMountInfo **) b;
+  size_t len_a = strlen (glnx_mount_info_get_mount_point (info_a));
+  size_t len_b = strlen (glnx_mount_info_get_mount_point (info_b));
 
-  if (entry_b->mount_point_len > entry_a->mount_point_len)
+  if (len_b > len_a)
     return 1;
-  if (entry_b->mount_point_len < entry_a->mount_point_len)
+  if (len_b < len_a)
     return -1;
   return 0;
 }
 
 static GPtrArray *
-parse_mountinfo (const char *path,
-                 gboolean    skip_root_mount_point)
+read_mount_entries (GLnxPidRef *pidref,
+                    gboolean    skip_root_mount_point)
 {
-  g_autoptr(GPtrArray) entries = NULL;
-  g_autofree char *contents = NULL;
-  g_auto(GStrv) lines = NULL;
+  g_autoptr(GPtrArray) all = NULL;
+  g_autoptr(GPtrArray) filtered = NULL;
 
-  entries =
-    g_ptr_array_new_with_free_func ((GDestroyNotify) mount_ns_entry_free);
+  if (pidref)
+    all = glnx_mount_info_list_for_pid (pidref, NULL);
+  else
+    all = glnx_mount_info_list (NULL, NULL);
 
-  if (!g_file_get_contents (path, &contents, NULL, NULL))
-    return g_steal_pointer (&entries);
+  if (!all)
+    return g_ptr_array_new_with_free_func ((GDestroyNotify) glnx_mount_info_unref);
 
-  lines = g_strsplit (contents, "\n", -1);
-
-  for (size_t i = 0; lines[i] != NULL; i++)
+  if (!skip_root_mount_point)
     {
-      g_auto(GStrv) fields = NULL;
-      g_autoptr(XdpMountNsEntry) entry = NULL;
-      g_autofree char *mount_point = NULL;
-      g_autofree char *root = NULL;
-      unsigned int major, minor;
-
-      if (lines[i][0] == '\0')
-        continue;
-
-      fields = g_strsplit (lines[i], " ", 6);
-      if (g_strv_length (fields) < 5)
-        continue;
-
-      if (sscanf (fields[2], "%u:%u", &major, &minor) != 2)
-        continue;
-
-      mount_point = mountinfo_unescape (fields[4]);
-
-      if (skip_root_mount_point && g_strcmp0 (mount_point, "/") == 0)
-        continue;
-
-      root = mountinfo_unescape (fields[3]);
-
-      entry = g_new (XdpMountNsEntry, 1);
-      entry->root = g_steal_pointer (&root);
-      entry->root_len = strlen (entry->root);
-      entry->mount_point = g_steal_pointer (&mount_point);
-      entry->mount_point_len = strlen (entry->mount_point);
-      entry->dev = makedev (major, minor);
-
-      g_ptr_array_add (entries, g_steal_pointer (&entry));
+      g_ptr_array_sort (all, compare_mount_point_len_desc);
+      return g_steal_pointer (&all);
     }
 
-  g_ptr_array_sort (entries, compare_mount_point_len_desc);
+  filtered = g_ptr_array_new_with_free_func ((GDestroyNotify) glnx_mount_info_unref);
 
-  return g_steal_pointer (&entries);
+  for (size_t i = 0; i < all->len; i++)
+    {
+      GLnxMountInfo *info = g_ptr_array_index (all, i);
+
+      if (g_strcmp0 (glnx_mount_info_get_mount_point (info), "/") == 0)
+        continue;
+
+      g_ptr_array_add (filtered, glnx_mount_info_ref (info));
+    }
+
+  g_ptr_array_sort (filtered, compare_mount_point_len_desc);
+
+  return g_steal_pointer (&filtered);
 }
 
 XdpMountNs *
-xdp_mount_ns_new (int pidfd)
+xdp_mount_ns_new (GLnxPidRef *pidref)
 {
   g_autoptr(XdpMountNs) mount_ns = NULL;
-  g_autoptr(GPtrArray) entries = NULL;
-  g_autoptr(GPtrArray) host_entries = NULL;
-  g_autoptr(GError) local_error = NULL;
-  g_autofree char *mountinfo_path = NULL;
-  pid_t pid;
 
   mount_ns = g_new0 (XdpMountNs, 1);
 
-  if (pidfd < 0)
+  if (!pidref)
     return g_steal_pointer (&mount_ns);
 
-  pid = xdp_pidfd_to_pid (pidfd, &local_error);
-  if (pid < 0)
-    return g_steal_pointer (&mount_ns);
-
-  mountinfo_path = g_strdup_printf ("/proc/%d/mountinfo", (int) pid);
-  entries = parse_mountinfo (mountinfo_path, /* skip_root_mount_point= */ TRUE);
-  host_entries =
-    parse_mountinfo ("/proc/self/mountinfo", /* skip_root_mount_point= */ FALSE);
-
-  /* Re-check: the process may have died and the pid been recycled */
-  g_clear_error (&local_error);
-  if (xdp_pidfd_to_pid (pidfd, &local_error) < 0)
-    return g_steal_pointer (&mount_ns);
-
-  mount_ns->entries = g_steal_pointer (&entries);
-  mount_ns->host_entries = g_steal_pointer (&host_entries);
+  mount_ns->entries = read_mount_entries (pidref, /* skip_root_mount_point= */ TRUE);
+  mount_ns->host_entries = read_mount_entries (NULL, /* skip_root_mount_point= */ FALSE);
 
   return g_steal_pointer (&mount_ns);
 }
@@ -198,44 +114,49 @@ count_path_components (const char *path)
 }
 
 static char *
-resolve_via_host_mounts (XdpMountNs      *mount_ns,
-                         XdpMountNsEntry *sandbox_entry,
-                         const char      *fs_path,
-                         struct stat     *st_buf)
+resolve_via_host_mounts (XdpMountNs    *mount_ns,
+                         GLnxMountInfo *sandbox_entry,
+                         const char    *fs_path,
+                         struct stat   *st_buf)
 {
   g_autofree char *best = NULL;
   size_t best_depth = G_MAXSIZE;
+  dev_t sandbox_dev = glnx_mount_info_get_devno (sandbox_entry);
 
   for (size_t i = 0; i < mount_ns->host_entries->len; i++)
     {
-      XdpMountNsEntry *host_entry = g_ptr_array_index (mount_ns->host_entries, i);
+      GLnxMountInfo *host_entry = g_ptr_array_index (mount_ns->host_entries, i);
       g_autofree char *candidate = NULL;
       struct stat candidate_st;
+      const char *host_root = glnx_mount_info_get_root (host_entry);
+      const char *host_mount_point = glnx_mount_info_get_mount_point (host_entry);
+      size_t host_root_len = strlen (host_root);
+      size_t host_mount_point_len = strlen (host_mount_point);
       const char *fs_remainder;
       size_t depth;
 
-      if (host_entry->dev != sandbox_entry->dev)
+      if (glnx_mount_info_get_devno (host_entry) != sandbox_dev)
         continue;
 
-      if (host_entry->root_len == 1 && host_entry->root[0] == '/')
+      if (host_root_len == 1 && host_root[0] == '/')
         {
           fs_remainder = fs_path;
         }
       else
         {
-          if (!g_str_has_prefix (fs_path, host_entry->root))
+          if (!g_str_has_prefix (fs_path, host_root))
             continue;
-          if (fs_path[host_entry->root_len] != '/' &&
-              fs_path[host_entry->root_len] != '\0')
+          if (fs_path[host_root_len] != '/' &&
+              fs_path[host_root_len] != '\0')
             continue;
 
-          fs_remainder = fs_path + host_entry->root_len;
+          fs_remainder = fs_path + host_root_len;
         }
 
-      if (host_entry->mount_point_len == 1 && host_entry->mount_point[0] == '/')
+      if (host_mount_point_len == 1 && host_mount_point[0] == '/')
         candidate = g_strdup (fs_remainder);
       else
-        candidate = g_strconcat (host_entry->mount_point, fs_remainder, NULL);
+        candidate = g_strconcat (host_mount_point, fs_remainder, NULL);
 
       if (st_buf)
         {
@@ -269,24 +190,28 @@ resolve_path (XdpMountNs  *mount_ns,
 
   for (size_t i = 0; i < mount_ns->entries->len; i++)
     {
-      XdpMountNsEntry *entry = g_ptr_array_index (mount_ns->entries, i);
+      GLnxMountInfo *entry = g_ptr_array_index (mount_ns->entries, i);
       g_autofree char *fs_path = NULL;
       g_autofree char *result = NULL;
+      const char *mount_point = glnx_mount_info_get_mount_point (entry);
+      const char *root = glnx_mount_info_get_root (entry);
+      size_t mount_point_len = strlen (mount_point);
+      size_t root_len = strlen (root);
       const char *remainder;
 
-      if (!g_str_has_prefix (path, entry->mount_point))
+      if (!g_str_has_prefix (path, mount_point))
         continue;
 
-      if (path[entry->mount_point_len] != '/' &&
-          path[entry->mount_point_len] != '\0')
+      if (path[mount_point_len] != '/' &&
+          path[mount_point_len] != '\0')
         continue;
 
-      remainder = path + entry->mount_point_len;
+      remainder = path + mount_point_len;
 
-      if (entry->root_len == 1 && entry->root[0] == '/')
+      if (root_len == 1 && root[0] == '/')
         fs_path = g_strdup (remainder[0] ? remainder : "/");
       else
-        fs_path = g_strconcat (entry->root, remainder, NULL);
+        fs_path = g_strconcat (root, remainder, NULL);
 
       result = resolve_via_host_mounts (mount_ns, entry, fs_path, st_buf);
       if (result)
@@ -296,13 +221,6 @@ resolve_path (XdpMountNs  *mount_ns,
   return NULL;
 }
 
-/*
- * Remap a path from the sandbox mount namespace to the host.
- *
- * The returned path is guaranteed to refer to the same file as
- * @st_buf (verified by dev/ino). Returns NULL if no verified
- * match was found.
- */
 char *
 xdp_mount_ns_remap_path (XdpMountNs  *mount_ns,
                          const char  *path,
@@ -318,12 +236,6 @@ xdp_mount_ns_remap_path (XdpMountNs  *mount_ns,
   return resolve_path (mount_ns, path, st_buf);
 }
 
-/*
- * Best-effort remap of a path from the sandbox mount namespace to the
- * host, based on the mount layout. The returned path will correspond
- * to a mount visible to the sandbox, but is not verified against a
- * specific file. Always returns a path.
- */
 char *
 xdp_mount_ns_remap_path_unverified (XdpMountNs *mount_ns,
                                     const char *path)

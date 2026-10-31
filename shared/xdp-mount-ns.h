@@ -7,10 +7,11 @@
 #include <sys/stat.h>
 
 #include <glib.h>
+#include <glnx-pidref.h>
 
 typedef struct _XdpMountNs XdpMountNs;
 
-XdpMountNs * xdp_mount_ns_new (int pidfd);
+XdpMountNs * xdp_mount_ns_new (GLnxPidRef *pidref);
 
 void xdp_mount_ns_free (XdpMountNs *mount_ns);
 
