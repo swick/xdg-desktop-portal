@@ -4,7 +4,6 @@
 # Subproject wraps
 subprojects/libglnx
 subprojects/gvdb
-subprojects/libspeechprovider
 
 # Tooling specific files
 __pycache__

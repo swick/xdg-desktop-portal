@@ -72,34 +72,16 @@ if have_geoclue
 else
   geoclue_built_sources = []
 endif
-if have_speech
-  # Meson < 1.14.0 requires explicit custom_target to properly track dependencies
-  if meson.version().version_compare('< 1.14.0')
-    # Copy the interface file locally so Meson can properly track it
-    iface_xml = custom_target(
-      'iface_xml',
-      output: 'org.freedesktop.Speech.Provider.xml',
-      command: ['cp', meson.global_source_root() / 'subprojects' / 'libspeechprovider' / 'interface' / 'org.freedesktop.Speech.Provider.xml', '@OUTPUT@'],
-      build_by_default: true,
-    )
-  else
-    # Meson >= 1.14.0 can handle the path directly
-    iface_xml = speechprovider_dep.get_variable('iface_xml')
-  endif
-
-  speech_built_sources = gnome.gdbus_codegen(
-    'speech-provider-dbus',
-    sources: iface_xml,
-    interface_prefix: 'org.freedesktop.Speech.',
-    namespace: 'Speech',
-    annotations : [
-      ['org.freedesktop.Speech.Provider', 'org.gtk.GDBus.C.Name', 'ProviderProxy']
-    ],
-    extra_args: gdbus_codegen_extra_args + ['--glib-min-required=2.64'],
-  )
-else
-  speech_built_sources = []
-endif
+speech_built_sources = gnome.gdbus_codegen(
+  'speech-provider-dbus',
+  sources: 'org.freedesktop.Speech.Provider.xml',
+  interface_prefix: 'org.freedesktop.Speech.',
+  namespace: 'Speech',
+  annotations : [
+    ['org.freedesktop.Speech.Provider', 'org.gtk.GDBus.C.Name', 'ProviderProxy']
+  ],
+  extra_args: gdbus_codegen_extra_args + ['--glib-min-required=2.64'],
+)
 
 xdp_method_info_built_sources = configure_file(
   command: [find_program('generate-method-info.py'), portal_sources, portal_experimental_sources],
@@ -178,11 +160,9 @@ if have_gudev
   )
 endif
 
-if have_speech
-  xdg_desktop_portal_sources += files(
-    'speech.c',
-  )
-endif
+xdg_desktop_portal_sources += files(
+  'speech.c',
+)
 
 common_deps = [
   glib_dep,

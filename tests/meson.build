@@ -112,7 +112,7 @@ tests = {
   'screencast': {},
   'screenshot': {},
   'shutdown': {},
-  'speech': {'enabled': have_speech},
+  'speech': {},
   'trash': {},
   'usb': {'enabled': have_gudev},
   'wallpaper': {},
