@@ -7,3 +7,11 @@ path = [
 ]
 SPDX-License-Identifier = "GPL-2.0-or-later"
 SPDX-FileCopyrightText = "Copyright © the geoclue contributors"
+
+[[annotations]]
+precedence = "override"
+path = [
+    "org.freedesktop.Speech.Provider.xml",
+]
+SPDX-License-Identifier = "LGPL-2.1-or-later"
+SPDX-FileCopyrightText = "Copyright 2024 Eitan Isaacson <eitan@monotonous.org>"
