@@ -400,7 +400,8 @@ typedef struct _XdpSessionDexStore
   GObject parent_instance;
 
   size_t session_offset;
-  GHashTable *sessions; /* char *session_handle -> XdpSessionDex *session */
+  GDestroyNotify free_func;
+  GHashTable *sessions; /* char *session_handle -> gpointer session_wrapper */
 } XdpSessionDexStore;
 
 G_DEFINE_FINAL_TYPE (XdpSessionDexStore,
@@ -421,16 +422,18 @@ void
 xdp_session_dex_store_take_session (XdpSessionDexStore *store,
                                     gpointer            session_wrapper)
 {
-  g_autoptr(GObject) owned_wrapper = G_OBJECT (session_wrapper);
   XdpSessionDex *session;
 
   session =
       XDP_SESSION_DEX (G_STRUCT_MEMBER (XdpSessionDex *,
-                                        owned_wrapper,
+                                        session_wrapper,
                                         store->session_offset));
 
   if (!session || xdp_session_dex_is_closed (session))
-    return;
+    {
+      store->free_func (session_wrapper);
+      return;
+    }
 
   g_signal_connect_object (session, "session-closed",
                            G_CALLBACK (on_session_closed),
@@ -439,7 +442,7 @@ xdp_session_dex_store_take_session (XdpSessionDexStore *store,
 
   g_hash_table_insert (store->sessions,
                        g_strdup (xdp_session_dex_get_object_path (session)),
-                       g_steal_pointer (&owned_wrapper));
+                       session_wrapper);
 }
 
 gpointer
@@ -447,8 +450,7 @@ xdp_session_dex_store_lookup_session (XdpSessionDexStore *store,
                                       const char         *session_handle,
                                       XdpAppInfo         *app_info)
 {
-  GObject *session_wrapper =
-    g_hash_table_lookup (store->sessions, session_handle);
+  gpointer session_wrapper = g_hash_table_lookup (store->sessions, session_handle);
   XdpSessionDex *session;
 
   if (!session_wrapper)
@@ -489,22 +491,24 @@ xdp_session_dex_store_class_init (XdpSessionDexStoreClass *klass)
 }
 
 XdpSessionDexStore *
-xdp_session_dex_store_new (void)
+xdp_session_dex_store_new (GDestroyNotify free_func)
 {
-  return xdp_session_dex_store_new_with_offset (0);
+  return xdp_session_dex_store_new_with_offset (0, free_func);
 }
 
 XdpSessionDexStore *
-xdp_session_dex_store_new_with_offset (size_t session_offset)
+xdp_session_dex_store_new_with_offset (size_t         session_offset,
+                                       GDestroyNotify free_func)
 {
   XdpSessionDexStore *store;
 
   store = g_object_new (XDP_TYPE_SESSION_DEX_STORE, NULL);
   store->session_offset = session_offset;
+  store->free_func = free_func;
   store->sessions =
     g_hash_table_new_full (g_str_hash, g_str_equal,
                            g_free,
-                           (GDestroyNotify) g_object_unref);
+                           free_func);
 
   return store;
 }

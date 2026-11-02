@@ -33,12 +33,13 @@ G_DECLARE_FINAL_TYPE (XdpSessionDexStore,
                       XDP, SESSION_DEX_STORE,
                       GObject)
 
-XdpSessionDexStore * xdp_session_dex_store_new (void);
+XdpSessionDexStore * xdp_session_dex_store_new (GDestroyNotify free_func);
 
-XdpSessionDexStore * xdp_session_dex_store_new_with_offset (size_t session_offset);
+XdpSessionDexStore * xdp_session_dex_store_new_with_offset (size_t         session_offset,
+                                                            GDestroyNotify free_func);
 
-#define xdp_session_dex_store_new_wrapped(MySessionWrapper, session) \
-  xdp_session_dex_store_new_with_offset (G_STRUCT_OFFSET (MySessionWrapper, session))
+#define xdp_session_dex_store_new_wrapped(MySessionWrapper, session, free_func) \
+  xdp_session_dex_store_new_with_offset (G_STRUCT_OFFSET (MySessionWrapper, session), free_func)
 
 gpointer xdp_session_dex_store_lookup_session (XdpSessionDexStore *store,
                                                const char         *session_handle,
