@@ -33,9 +33,6 @@
 #include "xdp-session-dex.h"
 #include "xdp-utils.h"
 
-#define PERMISSION_TABLE "speech"
-#define PERMISSION_ID "speech"
-
 #define PROVIDER_SUFFIX ".Speech.Provider"
 
 struct _XdpSpeech
@@ -44,6 +41,10 @@ struct _XdpSpeech
   XdpContext *context;
   XdpDbusImplAccess *access_impl;
   XdpSessionDexStore *sessions;
+
+  GHashTable *providers;
+  gulong subscription_ids[2];
+  gulong permission_changed_handler_id;
 };
 
 #define XDP_TYPE_SPEECH (xdp_speech_get_type ())
@@ -60,36 +61,17 @@ static GQuark quark_provider_voices_changed_handler;
 
 typedef struct
 {
-  gatomicrefcount ref_count;
-
   XdpSessionDex *session;
-
-  gulong subscription_ids[2];
-  gulong permission_changed_handler_id;
-
-  GHashTable *providers;
 } XdpSpeechSession;
 
-static void xdp_speech_session_clear (XdpSpeechSession *session);
-
-static XdpSpeechSession *
-xdp_speech_session_ref (XdpSpeechSession *session)
-{
-  g_atomic_ref_count_inc (&session->ref_count);
-  return session;
-}
-
 static void
-xdp_speech_session_unref (XdpSpeechSession *session)
+xdp_speech_session_free (XdpSpeechSession *speech_session)
 {
-  if (g_atomic_ref_count_dec (&session->ref_count))
-    {
-      xdp_speech_session_clear (session);
-      g_free (session);
-    }
+  g_clear_object (&speech_session->session);
+  g_free (speech_session);
 }
 
-G_DEFINE_AUTOPTR_CLEANUP_FUNC (XdpSpeechSession, xdp_speech_session_unref)
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (XdpSpeechSession, xdp_speech_session_free)
 
 static DexFuture *
 get_allowed_providers_future (void)
@@ -98,7 +80,7 @@ get_allowed_providers_future (void)
   g_autoptr (GVariant) allowed_providers = NULL;
 
   result = dex_await_boxed (xdp_dbus_impl_permission_store_call_lookup_future (
-                                xdp_get_permission_store (), PERMISSION_TABLE, PERMISSION_ID),
+                                xdp_get_permission_store (), SPEECH_PERMISSION_TABLE, SPEECH_PERMISSION_ID),
                             NULL);
 
   if (!result)
@@ -129,17 +111,13 @@ ask_speech_permissions_future (XdpSpeech *speech, XdpRequestDex *request, const 
   g_autofree gchar *subtitle = NULL;
   const gchar *body;
   guint perms = dex_await_uint (
-      xdp_permission_get_future (app_info, PERMISSION_TABLE, PERMISSION_ID), &error);
+      xdp_permission_get_future (app_info, SPEECH_PERMISSION_TABLE, SPEECH_PERMISSION_ID), &error);
 
   if (error)
-    {
-      return dex_future_new_for_error (g_steal_pointer (&error));
-    }
+    return dex_future_new_for_error (g_steal_pointer (&error));
 
   if (perms == XDP_PERMISSION_YES)
-    {
-      return dex_future_new_true ();
-    }
+    return dex_future_new_true ();
 
   if (perms == XDP_PERMISSION_NO)
     {
@@ -175,14 +153,12 @@ ask_speech_permissions_future (XdpSpeech *speech, XdpRequestDex *request, const 
                             &error);
 
   if (error)
-    {
-      return dex_future_new_for_error (g_steal_pointer (&error));
-    }
+    return dex_future_new_for_error (g_steal_pointer (&error));
 
   perms = result->response == 0 ? XDP_PERMISSION_YES : XDP_PERMISSION_NO;
 
   if (!dex_await_boolean (
-          xdp_permission_set_future (app_info, PERMISSION_TABLE, PERMISSION_ID, perms), &error))
+          xdp_permission_set_future (app_info, SPEECH_PERMISSION_TABLE, SPEECH_PERMISSION_ID, perms), &error))
     g_warning ("Setting unset permission failed: %s", error->message);
 
   if (perms != XDP_PERMISSION_YES)
@@ -210,30 +186,17 @@ provider_unref (GObject *object)
 }
 
 static DexFuture *
-collect_providers (XdpSpeechSession *speech_session)
+collect_providers (XdpSpeech *speech)
 {
   g_autoptr (GError) error = NULL;
-  GDBusConnection *connection = xdp_session_dex_get_connection (speech_session->session);
+  GDBusConnection *connection = xdp_context_get_connection (speech->context);
   g_autoptr (GHashTable) providers =
       g_hash_table_new_full (g_str_hash, g_str_equal, g_free, (GDestroyNotify) provider_unref);
   g_autoptr (GVariant) allowed_providers = NULL;
   const char *list_name_methods[] = { "ListActivatableNames", "ListNames", NULL };
-  guint perms = dex_await_uint (
-      xdp_permission_get_future (xdp_session_dex_get_app_info (speech_session->session),
-                                 PERMISSION_TABLE, PERMISSION_ID),
-      NULL);
-
-  if (perms != XDP_PERMISSION_YES)
-    {
-      /* If this app does not have permission, just quietly return an empty providers table
-       * this way we won't emit any changed notifications either. If the permission changes, the
-       * app will be notified new providers were added. */
-      return dex_future_new_take_boxed (G_TYPE_HASH_TABLE, g_steal_pointer (&providers));
-    }
 
   allowed_providers = dex_await_variant (get_allowed_providers_future (), NULL);
 
-  /* Collect both activatable providers and running providers into a single hashtable */
   for (const char **method = list_name_methods; *method; method++)
     {
       const char *service_name = NULL;
@@ -256,24 +219,16 @@ collect_providers (XdpSpeechSession *speech_session)
           gboolean allowed = FALSE;
 
           if (!g_str_has_suffix (service_name, PROVIDER_SUFFIX))
-            {
-              /* Providers are detected by their suffix */
-              continue;
-            }
+            continue;
 
           if (!allowed_providers ||
               !g_variant_lookup (allowed_providers, service_name, "b", &allowed) || !allowed)
-            {
-              /* Provider not explicitly allowed. */
-              continue;
-            }
+            continue;
 
           provider_proxy = g_hash_table_lookup (providers, service_name);
 
           if (!provider_proxy)
             {
-              /* Encountering this speech provider for the first time, instantiate proxy and store
-               * it in table */
               g_auto (GStrv) split_name = g_strsplit (service_name, ".", 0);
               g_autofree char *partial_path = g_strjoinv ("/", split_name);
               g_autofree char *obj_path = g_strdup_printf ("/%s", partial_path);
@@ -296,16 +251,14 @@ collect_providers (XdpSpeechSession *speech_session)
 }
 
 static void
-emit_voices_changed (XdpSpeechSession *speech_session)
+emit_voices_changed_for_session (XdpSpeechSession *speech_session, gpointer user_data)
 {
   GDBusConnection *connection = xdp_session_dex_get_connection (speech_session->session);
   XdpAppInfo *app_info = xdp_session_dex_get_app_info (speech_session->session);
   const char *sender = xdp_app_info_get_sender (app_info);
 
   if (!connection)
-    {
-      return;
-    }
+    return;
 
   g_autoptr (GError) error = NULL;
   if (!g_dbus_connection_emit_signal (
@@ -319,39 +272,41 @@ emit_voices_changed (XdpSpeechSession *speech_session)
 }
 
 static void
+emit_voices_changed (XdpSpeech *speech)
+{
+  xdp_session_dex_store_foreach (speech->sessions,
+                                 (GFunc) emit_voices_changed_for_session, NULL);
+}
+
+static void
 voices_changed_cb (SpeechProviderProxy *provider_proxy,
                    GParamSpec          *pspec,
-                   XdpSpeechSession      *speech_session)
+                   XdpSpeech           *speech)
 {
-  g_autoptr (GError) error = NULL;
   g_autofree char *name_owner = g_dbus_proxy_get_name_owner (G_DBUS_PROXY (provider_proxy));
   const char *provider_id = g_dbus_proxy_get_name (G_DBUS_PROXY (provider_proxy));
 
   if (name_owner == NULL)
-    {
-      /* Got a change notification because a service left the bus. */
-      return;
-    }
+    return;
 
-  if (!speech_session->providers ||
-      !g_hash_table_contains (speech_session->providers, provider_id))
+  if (!speech->providers || !g_hash_table_contains (speech->providers, provider_id))
     {
       g_warning ("Got a voices changed notification from a provider that is not in our table!");
       return;
     }
 
-  emit_voices_changed (speech_session);
+  emit_voices_changed (speech);
 }
 
 static DexFuture *
-update_providers (XdpSpeechSession *speech_session)
+update_providers (XdpSpeech *speech)
 {
   g_autoptr (GError) error = NULL;
   GHashTableIter providers_iter;
   SpeechProviderProxy *provider_proxy;
   char *provider_id = NULL;
   gboolean changed = FALSE;
-  g_autoptr (GHashTable) providers = dex_await_boxed (collect_providers (speech_session), &error);
+  g_autoptr (GHashTable) providers = dex_await_boxed (collect_providers (speech), &error);
 
   if (error)
     {
@@ -359,40 +314,34 @@ update_providers (XdpSpeechSession *speech_session)
       return dex_future_new_false ();
     }
 
-  if (speech_session->providers == NULL)
-    {
-      /* This is being called from the constructor */
-      speech_session->providers = g_hash_table_new_similar (providers);
-    }
+  if (speech->providers == NULL)
+    speech->providers = g_hash_table_new_similar (providers);
 
-  /* Iterate over cached providers and remove any that are not in our new list */
-  g_hash_table_iter_init (&providers_iter, speech_session->providers);
+  /* Remove cached providers that are not in the new list */
+  g_hash_table_iter_init (&providers_iter, speech->providers);
   while (g_hash_table_iter_next (&providers_iter, (gpointer *) &provider_id,
                                  (gpointer *) &provider_proxy))
     {
-      SpeechProviderProxy *new_provider_proxy = g_hash_table_lookup (providers, provider_id);
-
-      if (!new_provider_proxy)
+      if (!g_hash_table_lookup (providers, provider_id))
         {
-          /* Remove cached provider. */
           changed = TRUE;
           g_hash_table_iter_remove (&providers_iter);
         }
     }
 
-  /* Iterate over new providers and add to out cache any that are not already there */
+  /* Add new providers that are not already cached */
   g_hash_table_iter_init (&providers_iter, providers);
   while (g_hash_table_iter_next (&providers_iter, (gpointer *) &provider_id,
                                  (gpointer *) &provider_proxy))
     {
-      if (!g_hash_table_contains (speech_session->providers, provider_id))
+      if (!g_hash_table_contains (speech->providers, provider_id))
         {
           gulong handler_id;
 
           changed = TRUE;
-          g_hash_table_insert (speech_session->providers, provider_id, provider_proxy);
+          g_hash_table_insert (speech->providers, provider_id, provider_proxy);
           handler_id = g_signal_connect (provider_proxy, "notify::voices",
-                                         G_CALLBACK (voices_changed_cb), speech_session);
+                                         G_CALLBACK (voices_changed_cb), speech);
           g_object_set_qdata (G_OBJECT (provider_proxy), quark_provider_voices_changed_handler,
                               GSIZE_TO_POINTER (handler_id));
 
@@ -404,19 +353,17 @@ update_providers (XdpSpeechSession *speech_session)
 }
 
 static DexFuture *
-update_providers_and_emit_change (XdpSpeechSession *speech_session)
+update_providers_and_emit_change (XdpSpeech *speech)
 {
   g_autoptr (GError) error = NULL;
-  if (!dex_await_boolean (update_providers (speech_session), &error))
+  if (!dex_await_boolean (update_providers (speech), &error))
     {
       if (error != NULL)
-        {
-          g_warning ("Failed to update providers: %s\n", error->message);
-        }
+        g_warning ("Failed to update providers: %s\n", error->message);
       return dex_future_new_false ();
     }
 
-  emit_voices_changed (speech_session);
+  emit_voices_changed (speech);
   return dex_future_new_true ();
 }
 
@@ -429,15 +376,26 @@ providers_changed_cb (GDBusConnection *connection,
                       GVariant        *parameters,
                       gpointer         user_data)
 {
-  XdpSpeechSession *speech_session = user_data;
+  XdpSpeech *speech = XDP_SPEECH (user_data);
 
   dex_future_disown (dex_scheduler_spawn (NULL, 0, (DexFiberFunc) update_providers_and_emit_change,
-                                          xdp_speech_session_ref (speech_session),
-                                          (GDestroyNotify) xdp_speech_session_unref));
+                                          g_object_ref (speech), g_object_unref));
+}
+
+static DexFuture *
+permissions_changed_fiber (XdpSpeech *speech)
+{
+  g_autoptr (GError) error = NULL;
+
+  if (!dex_await_boolean (update_providers (speech), &error) && error != NULL)
+    g_warning ("Failed to update providers: %s", error->message);
+
+  emit_voices_changed (speech);
+  return dex_future_new_true ();
 }
 
 static void
-permissions_changed_cb (XdpSpeechSession              *speech_session,
+permissions_changed_cb (XdpSpeech                     *speech,
                         const char                    *arg_table,
                         const char                    *arg_id,
                         gboolean                       arg_deleted,
@@ -445,62 +403,11 @@ permissions_changed_cb (XdpSpeechSession              *speech_session,
                         GVariant                      *arg_permissions,
                         XdpDbusImplPermissionStore    *permission_store)
 {
-  if (g_strcmp0 (arg_table, PERMISSION_TABLE) != 0 || g_strcmp0 (arg_id, PERMISSION_ID) != 0)
+  if (g_strcmp0 (arg_table, SPEECH_PERMISSION_TABLE) != 0 || g_strcmp0 (arg_id, SPEECH_PERMISSION_ID) != 0)
     return;
 
-  dex_future_disown (dex_scheduler_spawn (NULL, 0, (DexFiberFunc) update_providers_and_emit_change,
-                                          xdp_speech_session_ref (speech_session),
-                                          (GDestroyNotify) xdp_speech_session_unref));
-}
-
-static void
-xdp_speech_session_clear (XdpSpeechSession *speech_session)
-{
-  GDBusConnection *connection = xdp_session_dex_get_connection (speech_session->session);
-
-  g_clear_pointer (&speech_session->providers, g_hash_table_unref);
-
-  if (speech_session->subscription_ids[0])
-    g_dbus_connection_signal_unsubscribe (connection, speech_session->subscription_ids[0]);
-
-  if (speech_session->subscription_ids[1])
-    g_dbus_connection_signal_unsubscribe (connection, speech_session->subscription_ids[1]);
-
-  if (speech_session->permission_changed_handler_id)
-    g_signal_handler_disconnect (xdp_get_permission_store (),
-                                 speech_session->permission_changed_handler_id);
-
-  g_clear_object (&speech_session->session);
-}
-
-static XdpSpeechSession *
-xdp_speech_session_new (XdpSessionDex *session, GError **error)
-{
-  GDBusConnection *connection = xdp_session_dex_get_connection (session);
-  g_autoptr (XdpSpeechSession) speech_session = g_new0 (XdpSpeechSession, 1);
-
-  g_atomic_ref_count_init (&speech_session->ref_count);
-
-  speech_session->subscription_ids[0] = g_dbus_connection_signal_subscribe (
-      connection, "org.freedesktop.DBus", "org.freedesktop.DBus", "ActivatableServicesChanged",
-      "/org/freedesktop/DBus", NULL, G_DBUS_SIGNAL_FLAGS_NONE, providers_changed_cb,
-      speech_session, NULL);
-
-  speech_session->subscription_ids[1] = g_dbus_connection_signal_subscribe (
-      connection, "org.freedesktop.DBus", "org.freedesktop.DBus", "NameOwnerChanged",
-      "/org/freedesktop/DBus", NULL, G_DBUS_SIGNAL_FLAGS_NONE, providers_changed_cb,
-      speech_session, NULL);
-
-  speech_session->permission_changed_handler_id =
-      g_signal_connect_swapped (xdp_get_permission_store (), "changed",
-                                G_CALLBACK (permissions_changed_cb), speech_session);
-
-  speech_session->session = g_object_ref (session);
-
-  if (!dex_await_boolean (update_providers (speech_session), error) && *error != NULL)
-    return NULL;
-
-  return g_steal_pointer (&speech_session);
+  dex_future_disown (dex_scheduler_spawn (NULL, 0, (DexFiberFunc) permissions_changed_fiber,
+                                          g_object_ref (speech), g_object_unref));
 }
 
 static gboolean
@@ -524,13 +431,8 @@ handle_create_session (XdpDbusSpeech         *object,
       return G_DBUS_METHOD_INVOCATION_HANDLED;
     }
 
-  speech_session = xdp_speech_session_new (session, &error);
-
-  if (!speech_session)
-    {
-      g_dbus_method_invocation_return_gerror (invocation, error);
-      return G_DBUS_METHOD_INVOCATION_HANDLED;
-    }
+  speech_session = g_new0 (XdpSpeechSession, 1);
+  speech_session->session = g_object_ref (session);
 
   xdp_dbus_speech_complete_create_session (object, g_steal_pointer (&invocation),
                                            xdp_session_dex_get_object_path (session));
@@ -550,15 +452,12 @@ handle_get_provider_details (XdpDbusSpeech         *object,
 {
   XdpSpeech *speech = XDP_SPEECH (object);
   XdpRequestDex *request = NULL;
-  XdpSpeechSession *speech_session = NULL;
   XdpAppInfo *app_info = xdp_invocation_get_app_info (invocation);
   guint32 response = XDG_DESKTOP_PORTAL_RESPONSE_CANCELLED;
   g_auto (GVariantBuilder) request_data_builder = G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE_VARDICT);
   g_autoptr (GError) error = NULL;
 
-  speech_session =
-      xdp_session_dex_store_lookup_session (speech->sessions, arg_session_handle, app_info);
-  if (!speech_session)
+  if (!xdp_session_dex_store_lookup_session (speech->sessions, arg_session_handle, app_info))
     {
       g_dbus_method_invocation_return_error (g_steal_pointer (&invocation), G_DBUS_ERROR,
                                              G_DBUS_ERROR_ACCESS_DENIED, "Invalid session");
@@ -587,7 +486,7 @@ handle_get_provider_details (XdpDbusSpeech         *object,
   if (dex_await_boolean (ask_speech_permissions_future (speech, request, arg_parent_window), NULL))
     {
       SpeechProviderProxy *provider_proxy =
-          g_hash_table_lookup (speech_session->providers, arg_provider_id);
+          g_hash_table_lookup (speech->providers, arg_provider_id);
       if (provider_proxy != NULL)
         {
           const char *provider_name = speech_provider_proxy_get_name (provider_proxy);
@@ -607,14 +506,14 @@ handle_get_provider_details (XdpDbusSpeech         *object,
 }
 
 static GVariant *
-get_voices (XdpSpeechSession *speech_session)
+get_voices (XdpSpeech *speech)
 {
   GHashTableIter providers_iter;
   SpeechProviderProxy *provider_proxy = NULL;
   char *provider_id = NULL;
   g_auto (GVariantBuilder) voices_builder = G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE ("aa{sv}"));
 
-  g_hash_table_iter_init (&providers_iter, speech_session->providers);
+  g_hash_table_iter_init (&providers_iter, speech->providers);
   while (g_hash_table_iter_next (&providers_iter, (gpointer *) &provider_id,
                                  (gpointer *) &provider_proxy))
     {
@@ -627,8 +526,7 @@ get_voices (XdpSpeechSession *speech_session)
 
       g_assert_cmpstr (g_variant_get_type_string (provider_voices), ==, "a(ssstas)");
 
-      g_autoptr (GVariantIter) iter = NULL;
-      iter = g_variant_iter_new (provider_voices);
+      g_autoptr (GVariantIter) iter = g_variant_iter_new (provider_voices);
 
       while (g_variant_iter_loop (iter, "(@s@s@s@t@as)", &voice_name, &voice_id, &voice_format,
                                   &voice_features, &voice_languages))
@@ -659,13 +557,10 @@ handle_get_voices (XdpDbusSpeech         *object,
 {
   XdpSpeech *speech = XDP_SPEECH (object);
   XdpRequestDex *request = NULL;
-  XdpSpeechSession *speech_session = NULL;
   XdpAppInfo *app_info = xdp_invocation_get_app_info (invocation);
   g_autoptr (GError) error = NULL;
 
-  speech_session =
-      xdp_session_dex_store_lookup_session (speech->sessions, arg_session_handle, app_info);
-  if (!speech_session)
+  if (!xdp_session_dex_store_lookup_session (speech->sessions, arg_session_handle, app_info))
     {
       g_dbus_method_invocation_return_error (g_steal_pointer (&invocation), G_DBUS_ERROR,
                                              G_DBUS_ERROR_ACCESS_DENIED, "Invalid session");
@@ -699,7 +594,7 @@ handle_get_voices (XdpDbusSpeech         *object,
                            NULL))
       {
         g_variant_builder_add (&request_data_builder, "{sv}", "voices",
-                               get_voices (speech_session));
+                               get_voices (speech));
 
         response = XDG_DESKTOP_PORTAL_RESPONSE_SUCCESS;
       }
@@ -730,13 +625,10 @@ handle_synthesize (XdpDbusSpeech         *object,
   XdpSpeech *speech = XDP_SPEECH (object);
   XdpRequestDex *request = NULL;
   XdpAppInfo *app_info = xdp_invocation_get_app_info (invocation);
-  XdpSpeechSession *speech_session = NULL;
   SpeechProviderProxy *provider_proxy = NULL;
   g_autoptr (GError) error = NULL;
 
-  speech_session =
-      xdp_session_dex_store_lookup_session (speech->sessions, arg_session_handle, app_info);
-  if (!speech_session)
+  if (!xdp_session_dex_store_lookup_session (speech->sessions, arg_session_handle, app_info))
     {
       g_dbus_method_invocation_return_error (g_steal_pointer (&invocation), G_DBUS_ERROR,
                                              G_DBUS_ERROR_ACCESS_DENIED, "Invalid session");
@@ -759,7 +651,7 @@ handle_synthesize (XdpDbusSpeech         *object,
       return G_DBUS_METHOD_INVOCATION_HANDLED;
     }
 
-  provider_proxy = g_hash_table_lookup (speech_session->providers, arg_provider_id);
+  provider_proxy = g_hash_table_lookup (speech->providers, arg_provider_id);
 
   xdp_dbus_speech_complete_synthesize (object, g_steal_pointer (&invocation), fd_list,
                                        xdp_request_dex_get_object_path (request));
@@ -814,6 +706,19 @@ static void
 xdp_speech_dispose (GObject *object)
 {
   XdpSpeech *speech = XDP_SPEECH (object);
+  GDBusConnection *connection = xdp_context_get_connection (speech->context);
+
+  g_clear_pointer (&speech->providers, g_hash_table_unref);
+
+  if (speech->subscription_ids[0])
+    g_dbus_connection_signal_unsubscribe (connection, speech->subscription_ids[0]);
+
+  if (speech->subscription_ids[1])
+    g_dbus_connection_signal_unsubscribe (connection, speech->subscription_ids[1]);
+
+  if (speech->permission_changed_handler_id)
+    g_signal_handler_disconnect (xdp_get_permission_store (),
+                                 speech->permission_changed_handler_id);
 
   g_clear_object (&speech->access_impl);
   g_clear_object (&speech->sessions);
@@ -829,17 +734,47 @@ xdp_speech_class_init (XdpSpeechClass *klass)
   object_class->dispose = xdp_speech_dispose;
 }
 
+static DexFuture *
+init_speech_providers (XdpSpeech *speech)
+{
+  g_autoptr (GError) error = NULL;
+
+  if (!dex_await_boolean (update_providers (speech), &error) && error != NULL)
+    g_warning ("Failed to initialize speech providers: %s", error->message);
+
+  return dex_future_new_true ();
+}
+
 static XdpSpeech *
 xdp_speech_new (XdpContext *context, XdpDbusImplAccess *access_impl)
 {
   XdpSpeech *speech;
+  GDBusConnection *connection = xdp_context_get_connection (context);
+
   speech = g_object_new (XDP_TYPE_SPEECH, NULL);
   speech->context = context;
   speech->access_impl = g_object_ref (access_impl);
   speech->sessions = xdp_session_dex_store_new_wrapped (XdpSpeechSession, session,
-                                                        (GDestroyNotify) xdp_speech_session_unref);
+                                                        (GDestroyNotify) xdp_speech_session_free);
+
+  speech->subscription_ids[0] = g_dbus_connection_signal_subscribe (
+      connection, "org.freedesktop.DBus", "org.freedesktop.DBus", "ActivatableServicesChanged",
+      "/org/freedesktop/DBus", NULL, G_DBUS_SIGNAL_FLAGS_NONE, providers_changed_cb,
+      speech, NULL);
+
+  speech->subscription_ids[1] = g_dbus_connection_signal_subscribe (
+      connection, "org.freedesktop.DBus", "org.freedesktop.DBus", "NameOwnerChanged",
+      "/org/freedesktop/DBus", NULL, G_DBUS_SIGNAL_FLAGS_NONE, providers_changed_cb,
+      speech, NULL);
+
+  speech->permission_changed_handler_id =
+      g_signal_connect_swapped (xdp_get_permission_store (), "changed",
+                                G_CALLBACK (permissions_changed_cb), speech);
 
   xdp_dbus_speech_set_version (XDP_DBUS_SPEECH (speech), 1);
+
+  dex_future_disown (dex_scheduler_spawn (NULL, 0, (DexFiberFunc) init_speech_providers,
+                                          g_object_ref (speech), g_object_unref));
 
   return speech;
 }

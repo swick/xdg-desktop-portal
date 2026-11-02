@@ -2,8 +2,6 @@
  * SPDX-FileCopyrightText: Copyright © the xdg-desktop-portal contributors
  */
 
-#include "config.h"
-
 #include "xdp-session-dex.h"
 
 #include "xdp-app-info-registry.h"
@@ -511,4 +509,17 @@ xdp_session_dex_store_new_with_offset (size_t         session_offset,
                            free_func);
 
   return store;
+}
+
+void
+xdp_session_dex_store_foreach (XdpSessionDexStore *store,
+                               GFunc               func,
+                               gpointer            user_data)
+{
+  GHashTableIter iter;
+  gpointer session_wrapper;
+
+  g_hash_table_iter_init (&iter, store->sessions);
+  while (g_hash_table_iter_next (&iter, NULL, &session_wrapper))
+    func (session_wrapper, user_data);
 }

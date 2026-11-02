@@ -47,3 +47,7 @@ gpointer xdp_session_dex_store_lookup_session (XdpSessionDexStore *store,
 
 void xdp_session_dex_store_take_session (XdpSessionDexStore *store,
                                          gpointer            session_wrapper);
+
+void xdp_session_dex_store_foreach (XdpSessionDexStore *store,
+                                    GFunc               func,
+                                    gpointer            user_data);
