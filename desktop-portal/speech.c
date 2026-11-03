@@ -1,3 +1,21 @@
+FIXME FIXME
+
+* we want to use intents
+  - makes it more uniform with other "provides service" kind of things
+  - allows apps t provide a single service implementing all interfaces
+  - makes it possible to tell flathub reviewers to look for the intent
+  - that also means we can drop the permission store for which providers are allowed
+  - we need to backport the glib functions
+* we *must not* activate the apps!
+  - same problem as search providers
+  - thundering herd, lots of work at login
+  - instead, keep track of voices in database
+  - passively listen to change signals of providers
+    * dont activate
+    * re-query when NameOwnerChanged
+    * re-query when Speech.Changed got emitted
+
+
 /*
  * Copyright © 2025 GNOME Foundation Inc.
  *
