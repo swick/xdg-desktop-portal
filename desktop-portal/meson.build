@@ -162,6 +162,7 @@ endif
 
 xdg_desktop_portal_sources += files(
   'speech.c',
+  'xdp-glib-backports.c',
 )
 
 common_deps = [

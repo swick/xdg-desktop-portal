@@ -5,33 +5,129 @@
 # mypy: disable-error-code="misc"
 
 import os
+import subprocess
+from contextlib import contextmanager
+from pathlib import Path
 
 import dbus
+import dbusmock
 import pytest
 
 import tests.xdp_utils as xdp
 
+_TESTS_DIR = Path(__file__).resolve().parent
 
-@pytest.fixture
-def required_templates():
-    return {
-        "speechprovider": {},
-        "access": {},
-    }
+
+@contextmanager
+def _chdir(path):
+    old = os.getcwd()
+    os.chdir(path)
+    try:
+        yield
+    finally:
+        os.chdir(old)
+
+
+class SpeechProviderApp:
+    """
+    A mock speech provider application. Manages a desktop file with the
+    Implements key for intent-based discovery and a dbusmock process
+    that implements the org.freedesktop.Speech.Provider interface.
+    """
+
+    BUS_NAME = "org.one.Speech.Provider"
+    OBJ_PATH = "/org/one/Speech/Provider"
+    MAIN_IFACE = "org.freedesktop.Speech.Provider"
+    MOCK_IFACE = "org.freedesktop.Speech.Provider.Mock"
+
+    def __init__(self, dbus_con):
+        self._dbus_con = dbus_con
+        self._process = None
+        self._mock = None
+        self._service_file = None
+        self._apps_dir = Path(os.environ["XDG_DATA_HOME"]) / "applications"
+        self._desktop_file = self._apps_dir / f"{self.BUS_NAME}.desktop"
+        self._intent_cache = self._apps_dir / "intent.cache"
+
+    def install(self):
+        self._apps_dir.mkdir(parents=True, exist_ok=True)
+        self._desktop_file.write_text(
+            "[Desktop Entry]\n"
+            "Type=Application\n"
+            "Name=Mock Speech Provider\n"
+            "Exec=/bin/true\n"
+            f"Implements={self.MAIN_IFACE};\n"
+        )
+        self._intent_cache.write_text(
+            f"[Intent Cache]\n{self.MAIN_IFACE}={self.BUS_NAME}.desktop;\n"
+        )
+
+        services_dir = Path(dbusmock.DBusTestCase.get_services_dir())
+        template_path = (_TESTS_DIR / "templates" / "speechprovider.py").absolute()
+        project_root = _TESTS_DIR.parent.absolute()
+        self._service_file = services_dir / f"{self.BUS_NAME}.service"
+        self._service_file.write_text(
+            f"[D-BUS Service]\n"
+            f"Name={self.BUS_NAME}\n"
+            f"Exec=/bin/sh -c 'cd {project_root} && exec python3 -m dbusmock -l /dev/null -t {template_path}'\n"
+        )
+
+    def uninstall(self):
+        self._desktop_file.unlink(missing_ok=True)
+        self._intent_cache.unlink(missing_ok=True)
+        if self._service_file:
+            self._service_file.unlink(missing_ok=True)
+            self._service_file = None
+
+    def start(self):
+        assert self._process is None
+
+        template_path = str((_TESTS_DIR / "templates" / "speechprovider.py").absolute())
+
+        self._process = subprocess.Popen(
+            [
+                "python3",
+                "-m",
+                "dbusmock",
+                "--session",
+                "-t",
+                template_path,
+            ],
+            stdout=None,
+            stderr=None,
+            cwd=str(_TESTS_DIR.parent),
+        )
+
+        xdp.wait_for(lambda: self._dbus_con.name_has_owner(self.BUS_NAME))
+        self._mock = self._dbus_con.get_object(self.BUS_NAME, self.OBJ_PATH)
+
+    def stop(self):
+        if self._process:
+            self._process.terminate()
+            self._process.wait()
+            self._process = None
+        elif self._dbus_con.name_has_owner(self.BUS_NAME):
+            dbus_obj = self._dbus_con.get_object(
+                "org.freedesktop.DBus", "/org/freedesktop/DBus"
+            )
+            pid = dbus_obj.GetConnectionUnixProcessID(
+                self._dbus_con.get_name_owner(self.BUS_NAME),
+                dbus_interface="org.freedesktop.DBus",
+            )
+            os.kill(pid, 15)
+        self._mock = None
+
+    @property
+    def mock(self):
+        if self._mock is None:
+            self._mock = self._dbus_con.get_object(self.BUS_NAME, self.OBJ_PATH)
+        return dbus.Interface(self._mock, self.MOCK_IFACE)
 
 
 class SpeechPermissions:
     def __init__(self, dbus_con, app_id):
         self.app_id = app_id
         self.permissions_store = xdp.get_permission_store_iface(dbus_con)
-
-    def set_allowed_providers(self, allowed_providers):
-        self.permissions_store.SetValue(
-            "speech",
-            True,
-            "speech",
-            dbus.Dictionary([(p, True) for p in allowed_providers], signature="sb"),
-        )
 
     def set_permission(self, perm):
         self.permissions_store.SetPermission(
@@ -41,14 +137,6 @@ class SpeechPermissions:
             self.app_id,
             [perm],
         )
-
-
-@pytest.fixture
-def speech_permissions(xdg_permission_store, xdp_app_info, dbus_con):
-    speech_permissions = SpeechPermissions(dbus_con, xdp_app_info.app_id)
-    speech_permissions.set_allowed_providers(["org.one.Speech.Provider"])
-    speech_permissions.set_permission("yes")
-    return speech_permissions
 
 
 class SpeechPortalSignalListener:
@@ -81,18 +169,31 @@ class SpeechPortalSignalListener:
 
 
 @pytest.fixture
-def dbus_signal_reciever(dbus_con):
-    dbus_signal_reciever = SpeechPortalSignalListener(dbus_con)
-    return dbus_signal_reciever
+def required_templates():
+    return {
+        "access": {},
+    }
 
 
 @pytest.fixture
-def speech_provider_mock(dbus_con):
-    speechprovider_proxy = dbus_con.get_object(
-        "org.one.Speech.Provider",
-        "/org/one/Speech/Provider",
-    )
-    return dbus.Interface(speechprovider_proxy, "org.freedesktop.Speech.Provider.Mock")
+def speech_provider_app(dbus_con):
+    app = SpeechProviderApp(dbus_con)
+    app.install()
+    yield app
+    app.stop()
+    app.uninstall()
+
+
+@pytest.fixture
+def portals(speech_provider_app, templates, xdg_desktop_portal, xdg_permission_store):
+    return
+
+
+@pytest.fixture
+def speech_permissions(xdg_permission_store, xdp_app_info, dbus_con):
+    speech_permissions = SpeechPermissions(dbus_con, xdp_app_info.app_id)
+    speech_permissions.set_permission("yes")
+    return speech_permissions
 
 
 @pytest.fixture
@@ -175,16 +276,18 @@ class TestSpeech:
         self,
         portals,
         dbus_con,
+        speech_provider_app,
         speech_permissions,
-        dbus_signal_reciever,
-        speech_provider_mock,
         speech_portal,
     ):
+        signal_listener = SpeechPortalSignalListener(dbus_con)
+
         session = xdp.Session(
             dbus_con,
             speech_portal.CreateSession({"session_handle_token": "session_token0"}),
         )
 
+        # The provider was auto-started during initial discovery (no voice cache)
         voices = self.get_voices(dbus_con, speech_portal, session)
         assert len(voices) == 1
 
@@ -203,9 +306,9 @@ class TestSpeech:
         )
         assert provider_details["name"] == "Mock Speech Provider"
 
-        dbus_signal_reciever.wait_for_portal_signal(
+        signal_listener.wait_for_portal_signal(
             "VoicesChanged",
-            lambda: speech_provider_mock.AddVoice(
+            lambda: speech_provider_app.mock.AddVoice(
                 "English",
                 "gmw/en-US",
                 "audio/x-spiel,format=S16LE,channels=1,rate=22050",
@@ -217,23 +320,16 @@ class TestSpeech:
         voices = self.get_voices(dbus_con, speech_portal, session)
         assert len(voices) == 2
 
-        dbus_signal_reciever.wait_for_portal_signal(
-            "VoicesChanged", lambda: speech_provider_mock.Hide()
-        )
-
-        voices = self.get_voices(dbus_con, speech_portal, session)
-        assert len(voices) == 0
-
-        dbus_signal_reciever.wait_for_portal_signal(
-            "VoicesChanged", lambda: speech_provider_mock.Show()
-        )
+        # Stop the provider app — cached voices remain available
+        speech_provider_app.stop()
+        xdp.wait_for(lambda: not dbus_con.name_has_owner(speech_provider_app.BUS_NAME))
 
         voices = self.get_voices(dbus_con, speech_portal, session)
         assert len(voices) == 2
 
-        dbus_signal_reciever.wait_for_portal_signal(
-            "VoicesChanged",
-            lambda: speech_provider_mock.RemoveVoice(0),
+        # Restart the provider app — voices refresh from the running provider
+        signal_listener.wait_for_portal_signal(
+            "VoicesChanged", lambda: speech_provider_app.start()
         )
 
         voices = self.get_voices(dbus_con, speech_portal, session)
@@ -250,7 +346,12 @@ class TestSpeech:
             raise AssertionError("No assertion was raised")
 
     def test_session_synthesize(
-        self, portals, dbus_con, speech_permissions, speech_portal
+        self,
+        portals,
+        dbus_con,
+        speech_provider_app,
+        speech_permissions,
+        speech_portal,
     ):
         session = xdp.Session(
             dbus_con,
@@ -267,9 +368,16 @@ class TestSpeech:
         )
 
     def test_access_denied(
-        self, portals, dbus_con, speech_permissions, dbus_signal_reciever, speech_portal
+        self,
+        portals,
+        dbus_con,
+        speech_provider_app,
+        speech_permissions,
+        speech_portal,
     ):
         speech_permissions.set_permission("no")
+
+        signal_listener = SpeechPortalSignalListener(dbus_con)
 
         session = xdp.Session(
             dbus_con,
@@ -296,7 +404,7 @@ class TestSpeech:
         )
 
         # Allowing the app will cause a providers changed signal
-        dbus_signal_reciever.wait_for_portal_signal(
+        signal_listener.wait_for_portal_signal(
             "VoicesChanged", lambda: speech_permissions.set_permission("yes")
         )
 
@@ -305,62 +413,4 @@ class TestSpeech:
             speech_portal,
             session,
         )
-        assert len(voices) == 1
-
-    def test_providers_allow_list(
-        self, portals, dbus_con, speech_permissions, dbus_signal_reciever, speech_portal
-    ):
-        session = xdp.Session(
-            dbus_con,
-            speech_portal.CreateSession({"session_handle_token": "session_token0"}),
-        )
-
-        self.get_provider_details(
-            dbus_con, speech_portal, session, "org.one.Speech.Provider"
-        )
-
-        voices = self.get_voices(dbus_con, speech_portal, session)
-        assert len(voices) == 1
-
-        dbus_signal_reciever.wait_for_portal_signal(
-            "VoicesChanged",
-            lambda: speech_permissions.set_allowed_providers(
-                ["org.two.Speech.Provider"]
-            ),
-        )
-
-        # Expect a response of OTHER because access was not denied to the app but the provider is hidden from it
-        self.get_provider_details(
-            dbus_con,
-            speech_portal,
-            session,
-            "org.one.Speech.Provider",
-            expected_response=2,
-        )
-
-        voices = self.get_voices(dbus_con, speech_portal, session)
-        assert len(voices) == 0
-
-        # Expect a response of OTHER because access was not denied to the app but the provider is hidden from it
-        self.synthesize(
-            dbus_con,
-            speech_portal,
-            session,
-            "org.one.Speech.Provider",
-            "gmw/en-US",
-            expected_response=2,
-        )
-
-        dbus_signal_reciever.wait_for_portal_signal(
-            "VoicesChanged",
-            lambda: speech_permissions.set_allowed_providers(
-                ["org.one.Speech.Provider"]
-            ),
-        )
-
-        self.get_provider_details(
-            dbus_con, speech_portal, session, "org.one.Speech.Provider"
-        )
-
-        voices = self.get_voices(dbus_con, speech_portal, session)
         assert len(voices) == 1

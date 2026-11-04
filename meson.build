@@ -151,6 +151,10 @@ gvdb = subproject(
 glib_dep = dependency('glib-2.0', version: '>= 2.88')
 gio_dep = dependency('gio-2.0')
 gio_unix_dep = dependency('gio-unix-2.0')
+
+config_h.set10('HAVE_GIO_INTENT_API',
+  cc.has_function('g_desktop_app_info_get_for_intent',
+                  dependencies: gio_unix_dep))
 json_glib_dep = dependency('json-glib-1.0')
 fuse3_dep = dependency('fuse3', version: '>= 3.10.0')
 gdk_pixbuf_dep = dependency('gdk-pixbuf-2.0')
