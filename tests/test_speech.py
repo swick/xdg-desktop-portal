@@ -36,7 +36,7 @@ class SpeechProviderApp:
     """
 
     BUS_NAME = "org.one.Speech.Provider"
-    OBJ_PATH = "/org/one/Speech/Provider"
+    OBJ_PATH = "/org/freedesktop/Speech/Provider"
     MAIN_IFACE = "org.freedesktop.Speech.Provider"
     MOCK_IFACE = "org.freedesktop.Speech.Provider.Mock"
 

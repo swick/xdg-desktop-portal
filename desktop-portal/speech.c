@@ -42,25 +42,18 @@ desktop_id_to_bus_name (const char *desktop_id)
   return g_strdup (desktop_id);
 }
 
-static char *
-bus_name_to_object_path (const char *bus_name)
-{
-  g_auto (GStrv) split = g_strsplit (bus_name, ".", 0);
-  g_autofree char *partial = g_strjoinv ("/", split);
-  return g_strdup_printf ("/%s", partial);
-}
+#define SPEECH_PROVIDER_OBJECT_PATH "/org/freedesktop/Speech/Provider"
 
 static GVariant *
 fetch_voices (GDBusConnection *connection,
-              const char      *bus_name,
-              const char      *obj_path)
+              const char      *bus_name)
 {
   g_autoptr (GError) error = NULL;
   g_autoptr (GVariant) result = NULL;
 
   result = dex_await_variant (
       dex_dbus_connection_call (connection,
-                                bus_name, obj_path,
+                                bus_name, SPEECH_PROVIDER_OBJECT_PATH,
                                 "org.freedesktop.DBus.Properties",
                                 "Get",
                                 g_variant_new ("(ss)",
@@ -87,7 +80,6 @@ struct _XdpSpeechProvider
   GObject parent_instance;
   GDBusConnection *connection; /* (owned) */
   char *bus_name; /* (owned) */
-  char *obj_path; /* (owned) */
   char *name; /* (owned) */
   GVariant *voices; /* (owned) (nullable) */
   SpeechProviderProxy *proxy; /* (owned) (nullable) */
@@ -194,7 +186,8 @@ xdp_speech_provider_run (XdpSpeechProvider *self)
 
   self->proxy = dex_await_object (
       speech_provider_proxy_proxy_new_future (self->connection, flags,
-                                               self->bus_name, self->obj_path),
+                                               self->bus_name,
+                                               SPEECH_PROVIDER_OBJECT_PATH),
       &error);
   if (error)
     {
@@ -211,7 +204,7 @@ xdp_speech_provider_run (XdpSpeechProvider *self)
                                           self->bus_name,
                                           "org.freedesktop.DBus.Properties",
                                           "PropertiesChanged",
-                                          self->obj_path,
+                                          SPEECH_PROVIDER_OBJECT_PATH,
                                           NULL,
                                           G_DBUS_SIGNAL_FLAGS_NONE,
                                           on_properties_changed,
@@ -221,8 +214,7 @@ xdp_speech_provider_run (XdpSpeechProvider *self)
                     G_CALLBACK (on_name_owner_changed), self);
 
   if (!self->voices)
-    self->voices = fetch_voices (self->connection, self->bus_name,
-                                 self->obj_path);
+    self->voices = fetch_voices (self->connection, self->bus_name);
 
   if (self->ready)
     {
@@ -241,8 +233,7 @@ xdp_speech_provider_run (XdpSpeechProvider *self)
       if (error)
         break;
 
-      new_voices = fetch_voices (self->connection, self->bus_name,
-                                  self->obj_path);
+      new_voices = fetch_voices (self->connection, self->bus_name);
       if (!new_voices)
         continue;
 
@@ -265,7 +256,6 @@ xdp_speech_provider_new (GDBusConnection *connection,
   self = g_object_new (XDP_TYPE_SPEECH_PROVIDER, NULL);
   self->connection = g_object_ref (connection);
   self->bus_name = g_strdup (bus_name);
-  self->obj_path = bus_name_to_object_path (bus_name);
   self->name = g_strdup (name);
   self->ready = dex_promise_new ();
 
@@ -303,7 +293,6 @@ xdp_speech_provider_dispose (GObject *object)
   g_clear_object (&self->proxy);
   g_clear_pointer (&self->voices, g_variant_unref);
   g_clear_pointer (&self->bus_name, g_free);
-  g_clear_pointer (&self->obj_path, g_free);
   g_clear_pointer (&self->name, g_free);
   g_clear_object (&self->connection);
 

@@ -16,7 +16,7 @@ SYSTEM_BUS = False
 MAIN_IFACE = "org.freedesktop.Speech.Provider"
 MOCK_IFACE = "org.freedesktop.Speech.Provider.Mock"
 BUS_NAME = "org.one.Speech.Provider"
-MAIN_OBJ = "/org/one/Speech/Provider"
+MAIN_OBJ = "/org/freedesktop/Speech/Provider"
 
 VERSION = 1
 
